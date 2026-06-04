@@ -22,6 +22,7 @@ An optional toggle that reveals the Control Chart with TDS/EY numbers and the id
 The default playground flow — adjust knobs, watch the cup/taste/verdict (and Pro chart) respond **live**. Everything updates as you drag; there is no brew-gate in this mode. Entered from the inputs.
 
 **Reverse mode** (Fix my cup):
+_Deferred — not currently exposed in the UI; the prescription engine (`coachFromComplaint`) is retained dormant for a later revival. The design below is the design-of-record for when it returns._
 The v1 differentiator. The user reports a cup they **already brewed in real life**: they confirm the recipe they used (method + Variables, framed as "the cup you made") and pick how it tasted; the app prescribes the single concrete fix and offers to **Apply** it to the recipe. The complaint **leads** (primary input); the recipe is supporting context that sharpens the target value. Same engine as Forward, run backwards. Taste entries map 1:1 to control-chart directions: **Sour** (under-extracted), **Bitter** (over-extracted), **Weak/watery** (low TDS), **Too strong** (high TDS), **Just right** (in the ideal box). The simulated Taste Profile/Verdict are **hidden** here — the user's reported taste is the only diagnosis (see "Trust the tongue"). There is no **Brew** action in Reverse; **Apply** is the action.
 
 ### Inputs (resolved so far)
