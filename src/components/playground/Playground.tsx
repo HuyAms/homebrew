@@ -348,7 +348,7 @@ export default function Playground() {
                     >
                       <span className="flex items-baseline justify-between gap-2">
                         <span className="text-base font-semibold" style={{ color: "#A33A28" }}>{r.title}</span>
-                        <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Load →</span>
+                        <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Apply →</span>
                       </span>
                       <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: "#5A4A3A" }}>
                         {r.brewer}
