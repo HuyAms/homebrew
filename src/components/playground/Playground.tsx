@@ -84,9 +84,10 @@ export default function Playground() {
   const result: BrewResult | null = brewed ? runBrew(method, vars) : null;
   const livePreview = extractFrom(method, vars);
 
-  // Merge a patch into the search params (replace: no back-stack spam).
+  // Merge a patch into the search params (replace: no back-stack spam;
+  // resetScroll:false so dragging a slider doesn't jump the page to the top).
   const patch = (p: Partial<BrewSearch>) =>
-    navigate({ search: (prev) => ({ ...prev, ...p }), replace: true });
+    navigate({ search: (prev) => ({ ...prev, ...p }), replace: true, resetScroll: false });
 
   // Editing any Variable re-gates the result (cup reverts until the next Brew).
   const setVar = (k: keyof BrewVars, v: number) => patch({ [k]: v, brewed: false } as Partial<BrewSearch>);
@@ -138,7 +139,6 @@ export default function Playground() {
               value={mode}
               onChange={(v) => switchMode(v as Mode)}
             />
-            <Toggle label="Pro view" on={proView} onClick={() => patch({ pro: !proView })} />
             <Segmented
               options={[{ v: "C", l: "°C" }, { v: "F", l: "°F" }]}
               value={tempUnit}
@@ -156,7 +156,7 @@ export default function Playground() {
                 const active = m.id === method;
                 return (
                   <button key={m.id} onClick={() => selectMethod(m.id)} aria-pressed={active}
-                    className="pb-0.5 text-base transition-all"
+                    className="cursor-pointer pb-0.5 text-base transition-all"
                     style={{
                       fontFamily: serif,
                       color: active ? "#A33A28" : "#7A6A57",
@@ -290,23 +290,6 @@ export default function Playground() {
               </div>
             )}
 
-            {/* Pro view: SCA control chart (dot previews live, lands on Brew) */}
-            {proView && (
-              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-                <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Pro · Control Chart</p>
-                <ControlChart
-                  result={result?.extraction ?? livePreview}
-                  domain={spec.chart.domain}
-                  idealBox={spec.chart.ideal}
-                  tdsDecimals={method === "espresso" ? 1 : 2}
-                  className="w-full"
-                />
-                <p className="mt-1 text-center text-[11px]" style={{ color: "#9A8870" }}>
-                  EY {(result?.extraction ?? livePreview).extractionYield}% · TDS {(result?.extraction ?? livePreview).tds}%
-                </p>
-              </div>
-            )}
-
             {/* Taste profile + verdict (brew-gated) */}
             <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
               <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Tasting Notes</p>
@@ -326,6 +309,23 @@ export default function Playground() {
                 </ul>
               )}
             </div>
+
+            {/* Pro view: SCA control chart (dot previews live, lands on Brew) */}
+            {proView && (
+              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+                <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Pro · Control Chart</p>
+                <ControlChart
+                  result={result?.extraction ?? livePreview}
+                  domain={spec.chart.domain}
+                  idealBox={spec.chart.ideal}
+                  tdsDecimals={method === "espresso" ? 1 : 2}
+                  className="w-full"
+                />
+                <p className="mt-1 text-center text-[11px]" style={{ color: "#9A8870" }}>
+                  EY {(result?.extraction ?? livePreview).extractionYield}% · TDS {(result?.extraction ?? livePreview).tds}%
+                </p>
+              </div>
+            )}
           </aside>
         </div>
       </div>
@@ -439,13 +439,3 @@ function Segmented({ options, value, onChange }: { options: { v: string; l: stri
   );
 }
 
-function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} aria-pressed={on}
-      className="flex items-center gap-2 rounded-full px-3 py-1 text-sm transition-colors"
-      style={{ fontFamily: serif, color: on ? "#F8F1E2" : "#7A6A57", background: on ? "#A33A28" : "transparent", border: "1.5px solid #D8C9AC" }}>
-      <span className="inline-block size-2 rounded-full" style={{ background: on ? "#F8F1E2" : "#C9B795" }} />
-      {label}
-    </button>
-  );
-}

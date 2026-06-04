@@ -19,10 +19,10 @@ An optional toggle that reveals the Control Chart with TDS/EY numbers and the id
 ### Modes
 
 **Forward mode** (explore):
-The default playground flow — adjust knobs, watch the cup/taste/verdict (and Pro chart) respond. Entered from the inputs.
+The default playground flow — adjust knobs, watch the cup/taste/verdict (and Pro chart) respond **live**. Everything updates as you drag; there is no brew-gate in this mode. Entered from the inputs.
 
 **Reverse mode** (Fix my cup):
-The v1 differentiator. Entered from the *result*: the user picks how their last cup tasted and the app moves to that zone and prescribes the single fix for their method. Same engine as Forward, run backwards. Taste entries map 1:1 to control-chart directions: **Sour** (under-extracted), **Bitter** (over-extracted), **Weak/watery** (low TDS), **Too strong** (high TDS), **Just right** (in the ideal box).
+The v1 differentiator. The user reports a cup they **already brewed in real life**: they confirm the recipe they used (method + Variables, framed as "the cup you made") and pick how it tasted; the app prescribes the single concrete fix and offers to **Apply** it to the recipe. The complaint **leads** (primary input); the recipe is supporting context that sharpens the target value. Same engine as Forward, run backwards. Taste entries map 1:1 to control-chart directions: **Sour** (under-extracted), **Bitter** (over-extracted), **Weak/watery** (low TDS), **Too strong** (high TDS), **Just right** (in the ideal box). The simulated Taste Profile/Verdict are **hidden** here — the user's reported taste is the only diagnosis (see "Trust the tongue"). There is no **Brew** action in Reverse; **Apply** is the action.
 
 ### Inputs (resolved so far)
 
@@ -72,10 +72,16 @@ A live human-readable flavor readout on five axes (confirmed): **Sourness/acidit
 Plain-language coaching tied to the numbers. Always leads with the **single highest-leverage fix** (change one variable at a time, per Rao/Hoffmann technique), e.g. "Tastes sour → grind one step finer." Alternatives ("…or +2°C, or +20s") are revealed on demand, not shown by default.
 
 **Cup Visualization**:
-A drawn cup whose color/darkness, crema, and body visibly change with the brew. Revealed/updated only on **Brew** (not live).
+A drawn cup whose color/darkness, crema, and body visibly change with the brew. In **Forward mode** it updates **live** with the variables. In **Reverse mode** it is gated (see **Brew**).
 
 **Brew**:
-The user action (a button) that runs the simulation and plays a method-specific brewing animation, then reveals the Cup + Verdict. Inputs give live *visual* feedback (grounds resize with grind, beans darken with roast, the chosen brewer is drawn), but the *result* is brew-gated — establishing the tweak → Brew → taste → adjust loop that mirrors real dial-in.
+A button whose meaning depends on mode. In **Forward mode** it is a **flourish**: it replays the method-specific brewing animation (pour/drip/press/pull/steep) for delight, but changes no data — the cup/taste/verdict are already live. In **Reverse mode** there is no Brew — the cup was already made in real life; the action there is **Apply** (write the prescribed fix into the recipe).
+
+**Apply**:
+The Reverse-mode action: writes a prescribed **Fix** into the current recipe (the Variable's `setValue`), correcting "the cup you made" toward the ideal.
+
+**Trust the tongue** (principle):
+In Reverse mode the user's *reported* taste is ground truth and overrides the simulation. If the engine thinks a recipe is dialed in but the user says it tasted sour, the app coaches for sour. The simulated Verdict/Taste Profile are therefore not shown in Reverse.
 
 ## Flagged ambiguities
 

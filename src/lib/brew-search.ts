@@ -53,7 +53,8 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     time: readVar(raw.time, method, "time"),
     roast: readVar(raw.roast, method, "roast"),
     mode: raw.mode === "reverse" ? "reverse" : "forward",
-    pro: bool(raw.pro),
+    // Pro view (control chart) is on by default; no longer user-toggled.
+    pro: raw.pro === undefined ? true : bool(raw.pro),
     unit: raw.unit === "F" ? "F" : "C",
     brewed: bool(raw.brewed),
   };
