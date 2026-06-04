@@ -1,7 +1,8 @@
 // The Homebrew Playground — single responsive screen, single-mode Explore.
 // Design: "Field Notes" — an editorial brew-journal on warm ruled paper. Left
-// recipe sheet (method tabs + five Variable sliders + Brew), right the cup,
-// tasting-note slips and the verdict. A Pro view reveals the SCA control chart.
+// recipe sheet (method tabs + five Variable sliders), right the cup with its
+// Brew button (kept together so the ritual is always in view), tasting-note
+// slips and the verdict. A Pro view reveals the SCA control chart.
 // Side-by-side on desktop, stacked on mobile.
 //
 // The result is LIVE: dragging any Variable instantly updates the Cup, Taste
@@ -33,7 +34,6 @@ import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
 import { VarViz, type VizTheme } from "./visuals";
 import { BrewStage, VarStrip, type ReplayPhase } from "./brew-stage";
 import { ControlChart } from "./control-chart";
-import { PlaygroundPrototype } from "./PlaygroundPrototype"; // PROTOTYPE-ONLY
 
 const route = getRouteApi("/");
 
@@ -41,8 +41,8 @@ const route = getRouteApi("/");
 // only built/fetched on the first Brew, never at module load.
 const brewSound = createBrewSoundPlayer();
 
-export const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
-export const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
+const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
+const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
 
 // Brew-it ritual beats (ms). Reduced motion skips drain/pour and shows a brief
 // steam wisp only (see onBrew).
@@ -128,34 +128,6 @@ export default function Playground() {
     timers.current.push(window.setTimeout(() => setPhase("idle"), DRAIN_MS + POUR_MS + SETTLE_MS));
   };
   const replaying = phase !== "idle";
-
-  // PROTOTYPE-ONLY: ?variant=a|b|c renders a cup-visibility layout experiment.
-  // Absent → the real app below, unchanged. Delete this branch with the prototype.
-  if (search.variant) {
-    return (
-      <PlaygroundPrototype
-        variant={search.variant}
-        method={method}
-        vars={vars}
-        spec={spec}
-        ranges={ranges}
-        result={result}
-        phase={phase}
-        replaying={replaying}
-        hasBrewed={hasBrewed}
-        tempUnit={tempUnit}
-        muted={muted}
-        proView={proView}
-        showAlts={showAlts}
-        setShowAlts={setShowAlts}
-        onBrew={onBrew}
-        setVar={setVar}
-        selectMethod={selectMethod}
-        applyFix={applyFix}
-        patch={patch}
-      />
-    );
-  }
 
   return (
     <div
@@ -247,15 +219,6 @@ export default function Playground() {
                 );
               })}
             </div>
-
-            {/* Brew — a flourish: replays the ritual, changes no data */}
-            <div className="mt-8 flex justify-center">
-              <button onClick={onBrew} disabled={replaying}
-                className="rotate-[-3deg] rounded-md px-10 py-3 text-xl uppercase tracking-[0.15em] transition-all hover:rotate-0 active:translate-y-px disabled:opacity-60"
-                style={{ fontFamily: serif, fontWeight: 700, color: "#A33A28", border: "3px double #A33A28", background: "rgba(163,58,40,.05)" }}>
-                {replaying ? "Brewing…" : "Brew it"}
-              </button>
-            </div>
           </section>
 
           {/* ── Result (live) ── */}
@@ -283,6 +246,14 @@ export default function Playground() {
                   {replaying ? "Brewing…" : "Pencil in your recipe, then brew."}
                 </p>
               )}
+              {/* Brew sits with the cup so its ritual is always in view */}
+              <div className="mt-5 flex justify-center">
+                <button onClick={onBrew} disabled={replaying}
+                  className="brew-it rotate-[-3deg] cursor-pointer rounded-md px-10 py-3 text-xl uppercase tracking-[0.15em] transition-all hover:rotate-0 hover:-translate-y-0.5 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{ fontFamily: serif, fontWeight: 700, color: "#A33A28", border: "3px double #A33A28", background: "rgba(163,58,40,.05)" }}>
+                  {replaying ? "Brewing…" : "Brew it"}
+                </button>
+              </div>
             </div>
 
             {/* Taste profile + verdict (live) */}
@@ -329,13 +300,14 @@ export default function Playground() {
         .brew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:22px; height:22px; border-radius:999px; background:#FBF6EA; border:3px solid #A33A28; box-shadow:0 1px 4px rgba(67,53,42,.35); cursor:pointer; }
         .brew-slider::-moz-range-thumb { width:22px; height:22px; border-radius:999px; background:#FBF6EA; border:3px solid #A33A28; cursor:pointer; }
         .ml-15 { margin-left: 3.75rem; }
+        .brew-it:hover:not(:disabled) { background:#A33A28 !important; color:#F8F1E2 !important; box-shadow:0 6px 16px -6px rgba(163,58,40,.6); }
       `}</style>
     </div>
   );
 }
 
 /** Live pre-brew cup colour fallback (the live colour comes from the Taste Mapper). */
-export function previewColor(vars: BrewVars): string {
+function previewColor(vars: BrewVars): string {
   const strength = 100 - (vars.ratio - 6) * 6;
   const l = 0.4 - vars.roast * 0.0014 - strength * 0.0004;
   return `oklch(${Math.max(0.18, l).toFixed(3)} 0.07 60)`;
@@ -350,7 +322,7 @@ const AXES: { key: keyof TasteResult["taste"]; label: string }[] = [
   { key: "balance", label: "Balance" },
 ];
 
-export function TasteProfile({ taste }: { taste: TasteResult }) {
+function TasteProfile({ taste }: { taste: TasteResult }) {
   return (
     <div className="space-y-2">
       {AXES.map((a) => (
@@ -367,7 +339,7 @@ export function TasteProfile({ taste }: { taste: TasteResult }) {
 }
 
 // ── verdict (single highest-leverage fix + alternatives) ──────────────────────
-export function Verdict({
+function Verdict({
   coach,
   showAlts,
   onToggleAlts,
@@ -419,7 +391,7 @@ export function Verdict({
 // A hand-drawn speaker that sits beside the °C/°F toggle. Unmuted: two sound
 // waves gently pulse outward (the input is drawn + animated). Muted: the waves
 // give way to a struck-through slash.
-export function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   const color = muted ? "#A3917A" : "#A33A28";
   return (
     <button
@@ -533,7 +505,7 @@ function InfoTip({ title, children, className = "mb-3" }: { title: string; child
 }
 
 // ── small toggle controls ─────────────────────────────────────────────────────
-export function Segmented({ options, value, onChange }: { options: { v: string; l: string }[]; value: string; onChange: (v: string) => void }) {
+function Segmented({ options, value, onChange }: { options: { v: string; l: string }[]; value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex overflow-hidden rounded-full" style={{ border: "1.5px solid #D8C9AC" }}>
       {options.map((o) => {
