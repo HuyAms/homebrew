@@ -1,41 +1,49 @@
-// The Homebrew Playground — single responsive screen.
+// The Homebrew Playground — single responsive screen, single-mode Explore.
 // Design: "Field Notes" — an editorial brew-journal on warm ruled paper. Left
-// recipe sheet (method tabs + five Variable sliders + Brew), right the cup
-// (brewer pours in, fills on Brew), tasting-note slips and the verdict. A Pro
-// view reveals the SCA control chart; a Forward/Reverse toggle switches between
-// "explore" and "fix my cup". Side-by-side on desktop, stacked on mobile.
+// recipe sheet (method tabs + five Variable sliders + Brew), right the cup,
+// tasting-note slips and the verdict. A Pro view reveals the SCA control chart.
+// Side-by-side on desktop, stacked on mobile.
 //
-// The result is brew-gated: inputs give live visual feedback (grounds, bean,
-// thermometer, the live chart dot), but the cup/taste/verdict update on Brew.
-// The Extraction Engine, Taste Mapper and Coach (src/lib/coffee/) drive both
-// Forward and Reverse modes. Brew state lives in TanStack Router search params
-// (the single source of truth), so every brew is shareable and refresh-safe.
-import { useState } from "react";
+// The result is LIVE: dragging any Variable instantly updates the Cup, Taste
+// Profile, Verdict, and Pro chart — there is no brew gate. Brew it is a pure
+// flourish: it replays the method-specific brewing ritual (drain → tilt-pour
+// refill → bloom + swirl → steam), changes no data, and is re-triggerable.
+//
+// The Extraction Engine, Taste Mapper and Coach (src/lib/coffee/) drive the
+// result. Recipe state lives in TanStack Router search params (the single
+// source of truth), so every recipe is shareable and refresh-safe.
+import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
 import { getRouteApi } from "@tanstack/react-router";
 import type {
   BrewVars,
   CoachResult,
   ExtractionResult,
   Method,
-  TasteComplaint,
   TasteResult,
 } from "@/lib/coffee/types";
 import { extractFrom } from "@/lib/coffee/extraction-engine";
 import { mapTaste } from "@/lib/coffee/taste-mapper";
-import { coach, coachFromComplaint } from "@/lib/coffee/coach";
+import { coach } from "@/lib/coffee/coach";
 import { grindReference } from "@/lib/coffee/grind";
 import { methodSpec } from "@/lib/coffee/methods";
-import { defaultSearchVars, type BrewSearch, type Mode } from "@/lib/brew-search";
+import { defaultSearchVars, type BrewSearch } from "@/lib/brew-search";
 import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
 import { VarViz, type VizTheme } from "./visuals";
-import { BrewStage, VarStrip } from "./brew-stage";
+import { BrewStage, VarStrip, type ReplayPhase } from "./brew-stage";
 import { ControlChart } from "./control-chart";
 
 const route = getRouteApi("/");
 
 const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
 const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
-const BREW_MS = 2200;
+
+// Brew-it ritual beats (ms). Reduced motion skips drain/pour and shows a brief
+// steam wisp only (see onBrew).
+const DRAIN_MS = 460;
+const POUR_MS = 900;
+const SETTLE_MS = 840;
+const REDUCED_MS = 600;
 
 interface BrewResult {
   extraction: ExtractionResult;
@@ -50,19 +58,11 @@ function runBrew(method: Method, vars: BrewVars): BrewResult {
   return { extraction, taste, coach: coachResult };
 }
 
-const COMPLAINTS: { id: TasteComplaint; label: string; note: string }[] = [
-  { id: "sour", label: "Sour", note: "sharp, under-extracted" },
-  { id: "bitter", label: "Bitter", note: "harsh, over-extracted" },
-  { id: "weak", label: "Weak / watery", note: "thin, low strength" },
-  { id: "too-strong", label: "Too strong", note: "intense, high strength" },
-  { id: "just-right", label: "Just right", note: "in the sweet spot" },
-];
-
 export default function Playground() {
-  // Search params are the single source of truth for the persistent brew state.
+  // Search params are the single source of truth for the persistent recipe.
   const search = route.useSearch();
   const navigate = route.useNavigate();
-  const { method, mode, pro: proView, unit: tempUnit, brewed } = search;
+  const { method, pro: proView, unit: tempUnit } = search;
   const vars: BrewVars = {
     grind: search.grind,
     waterTemp: search.waterTemp,
@@ -72,49 +72,53 @@ export default function Playground() {
   };
 
   // Transient, non-shareable UI state.
-  const [brewing, setBrewing] = useState(false);
+  const reduced = useReducedMotion();
+  const [phase, setPhase] = useState<ReplayPhase>("idle");
+  // The cup is empty until the first Brew; afterward it tracks the live recipe.
+  const [hasBrewed, setHasBrewed] = useState(false);
   const [showAlts, setShowAlts] = useState(false);
-  const [complaint, setComplaint] = useState<TasteComplaint | null>(null);
+  const timers = useRef<number[]>([]);
+
+  const clearTimers = () => {
+    timers.current.forEach(window.clearTimeout);
+    timers.current = [];
+  };
+  useEffect(() => clearTimers, []);
 
   const spec = methodSpec(method);
   const ranges = varRanges(method);
 
-  // The result is derived from the (brew-gated) search state, so it survives
-  // refresh; the chart preview reads live from the current variables.
-  const result: BrewResult | null = brewed ? runBrew(method, vars) : null;
-  const livePreview = extractFrom(method, vars);
+  // The result is derived live from the current recipe every render — no gate.
+  const result = runBrew(method, vars);
 
   // Merge a patch into the search params (replace: no back-stack spam;
   // resetScroll:false so dragging a slider doesn't jump the page to the top).
   const patch = (p: Partial<BrewSearch>) =>
     navigate({ search: (prev) => ({ ...prev, ...p }), replace: true, resetScroll: false });
 
-  // Editing any Variable re-gates the result (cup reverts until the next Brew).
-  const setVar = (k: keyof BrewVars, v: number) => patch({ [k]: v, brewed: false } as Partial<BrewSearch>);
-
-  const selectMethod = (m: Method) => {
-    setComplaint(null);
-    patch({ method: m, ...defaultSearchVars(m), brewed: false });
-  };
-
-  const onBrew = () => {
-    setBrewing(true);
-    setShowAlts(false);
-    window.setTimeout(() => {
-      setBrewing(false);
-      patch({ brewed: true });
-    }, BREW_MS);
-  };
-
-  const switchMode = (m: Mode) => {
-    setComplaint(null);
-    patch({ mode: m });
-  };
-
-  // Reverse mode: prescribe a fix from the chosen taste complaint.
-  const reverseFix: CoachResult | null = complaint ? coachFromComplaint(complaint, method, vars) : null;
+  const setVar = (k: keyof BrewVars, v: number) => patch({ [k]: v } as Partial<BrewSearch>);
+  const selectMethod = (m: Method) => patch({ method: m, ...defaultSearchVars(m) });
   const applyFix = (variable: keyof BrewVars, value: number) =>
-    patch({ [variable]: value, brewed: false } as Partial<BrewSearch>);
+    patch({ [variable]: value } as Partial<BrewSearch>);
+
+  // Brew it: replay the ritual. Changes no data; re-triggerable once idle.
+  const onBrew = () => {
+    if (phase !== "idle") return;
+    setShowAlts(false);
+    setHasBrewed(true);
+    clearTimers();
+    if (reduced) {
+      // Trim the ceremony: a brief steam wisp, no drain/re-pour/bloom.
+      setPhase("settle");
+      timers.current.push(window.setTimeout(() => setPhase("idle"), REDUCED_MS));
+      return;
+    }
+    setPhase("drain");
+    timers.current.push(window.setTimeout(() => setPhase("pour"), DRAIN_MS));
+    timers.current.push(window.setTimeout(() => setPhase("settle"), DRAIN_MS + POUR_MS));
+    timers.current.push(window.setTimeout(() => setPhase("idle"), DRAIN_MS + POUR_MS + SETTLE_MS));
+  };
+  const replaying = phase !== "idle";
 
   return (
     <div
@@ -125,20 +129,15 @@ export default function Playground() {
       }}
     >
       <div className="mx-auto max-w-5xl">
-        {/* journal masthead + toggles */}
+        {/* journal masthead + display toggles */}
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b pb-3" style={{ borderColor: "#D8C9AC" }}>
           <div>
             <p className="text-xs uppercase tracking-[0.3em]" style={{ color: "#A3917A" }}>Homebrew · Brew Journal</p>
             <h1 className="text-2xl sm:text-3xl" style={{ fontFamily: serif, fontWeight: 600 }}>
-              {mode === "forward" ? "Explore your cup" : "Fix my cup"}
+              Explore your cup
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Segmented
-              options={[{ v: "forward", l: "Explore" }, { v: "reverse", l: "Fix my cup" }]}
-              value={mode}
-              onChange={(v) => switchMode(v as Mode)}
-            />
             <Segmented
               options={[{ v: "C", l: "°C" }, { v: "F", l: "°F" }]}
               value={tempUnit}
@@ -211,17 +210,17 @@ export default function Playground() {
               })}
             </div>
 
-            {/* Brew */}
+            {/* Brew — a flourish: replays the ritual, changes no data */}
             <div className="mt-8 flex justify-center">
-              <button onClick={onBrew} disabled={brewing}
+              <button onClick={onBrew} disabled={replaying}
                 className="rotate-[-3deg] rounded-md px-10 py-3 text-xl uppercase tracking-[0.15em] transition-all hover:rotate-0 active:translate-y-px disabled:opacity-60"
                 style={{ fontFamily: serif, fontWeight: 700, color: "#A33A28", border: "3px double #A33A28", background: "rgba(163,58,40,.05)" }}>
-                {brewing ? "Brewing…" : "Brew it"}
+                {replaying ? "Brewing…" : "Brew it"}
               </button>
             </div>
           </section>
 
-          {/* ── Result ── */}
+          {/* ── Result (live) ── */}
           <aside className="flex flex-col gap-4">
             {/* Cup */}
             <div className="rounded-sm p-6 text-center" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
@@ -231,98 +230,43 @@ export default function Playground() {
                   method={method}
                   theme={theme}
                   liquid={previewColor(vars)}
-                  cup={result?.taste.cup}
-                  brewing={brewing}
-                  brewed={brewed}
+                  cup={result.taste.cup}
+                  phase={phase}
+                  filled={hasBrewed}
                   cupBody="#FFFDF7"
                   cupRim="#6F5D49"
-                  brewMs={BREW_MS}
                 />
               </div>
               <div className="mt-5">
                 <VarStrip vars={vars} method={method} theme={theme} tempUnit={tempUnit} tone={{ chipBg: "#EFE6D2", value: "#A33A28" }} />
               </div>
-              {!brewed && (
+              {!hasBrewed && (
                 <p className="mt-4 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>
-                  {brewing ? "Brewing…" : "Pencil in your recipe, then brew."}
+                  {replaying ? "Brewing…" : "Pencil in your recipe, then brew."}
                 </p>
               )}
             </div>
 
-            {/* Reverse mode: complaint picker + prescribed fix */}
-            {mode === "reverse" && (
-              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-                <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>How did your last cup taste?</p>
-                <div className="flex flex-wrap gap-2">
-                  {COMPLAINTS.map((c) => {
-                    const active = complaint === c.id;
-                    return (
-                      <button key={c.id} onClick={() => setComplaint(c.id)} aria-pressed={active}
-                        className="rounded-full px-3 py-1.5 text-sm transition-all"
-                        style={{
-                          fontFamily: serif,
-                          color: active ? "#F8F1E2" : "#7A6A57",
-                          background: active ? "#A33A28" : "transparent",
-                          border: `1.5px solid ${active ? "#A33A28" : "#D8C9AC"}`,
-                        }}>
-                        {c.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {reverseFix && (
-                  <div className="mt-4 rounded-sm p-4" style={{ background: "#EFE6D2", border: "1px solid #E0D2B8" }}>
-                    <p className="text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>{reverseFix.diagnosis}</p>
-                    {reverseFix.dialedIn ? (
-                      <p className="mt-2 text-lg" style={{ fontFamily: serif, color: "#A33A28" }}>Keep this recipe — it's dialed in. ☕</p>
-                    ) : (
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <p className="text-lg" style={{ fontFamily: serif, fontWeight: 600 }}>{reverseFix.primaryFix.instruction}</p>
-                        <button onClick={() => applyFix(reverseFix.primaryFix.variable, reverseFix.primaryFix.setValue)}
-                          className="shrink-0 rounded-md px-4 py-1.5 text-sm uppercase tracking-wide"
-                          style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2", background: "#A33A28" }}>
-                          Apply
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Taste profile + verdict (brew-gated) */}
+            {/* Taste profile + verdict (live) */}
             <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
               <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Tasting Notes</p>
-              {result ? (
-                <>
-                  <TasteProfile taste={result.taste} />
-                  <Verdict coach={result.coach} showAlts={showAlts} onToggleAlts={() => setShowAlts((s) => !s)} onApply={applyFix} />
-                </>
-              ) : (
-                <ul className="space-y-2">
-                  {["Acidity", "Sweetness", "Body", "Balance", "Verdict"].map((t) => (
-                    <li key={t} className="flex items-center justify-between text-sm" style={{ fontFamily: serif }}>
-                      <span>{t}</span>
-                      <span className="ml-3 flex-1 border-b border-dotted" style={{ borderColor: "#C9B795" }} />
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <TasteProfile taste={result.taste} />
+              <Verdict coach={result.coach} showAlts={showAlts} onToggleAlts={() => setShowAlts((s) => !s)} onApply={applyFix} />
             </div>
 
-            {/* Pro view: SCA control chart (dot previews live, lands on Brew) */}
+            {/* Pro view: SCA control chart (live) */}
             {proView && (
               <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
                 <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Pro · Control Chart</p>
                 <ControlChart
-                  result={result?.extraction ?? livePreview}
+                  result={result.extraction}
                   domain={spec.chart.domain}
                   idealBox={spec.chart.ideal}
                   tdsDecimals={method === "espresso" ? 1 : 2}
                   className="w-full"
                 />
                 <p className="mt-1 text-center text-[11px]" style={{ color: "#9A8870" }}>
-                  EY {(result?.extraction ?? livePreview).extractionYield}% · TDS {(result?.extraction ?? livePreview).tds}%
+                  EY {result.extraction.extractionYield}% · TDS {result.extraction.tds}%
                 </p>
               </div>
             )}
@@ -340,7 +284,7 @@ export default function Playground() {
   );
 }
 
-/** Live pre-brew cup colour (the brewed colour comes from the Taste Mapper). */
+/** Live pre-brew cup colour fallback (the live colour comes from the Taste Mapper). */
 function previewColor(vars: BrewVars): string {
   const strength = 100 - (vars.ratio - 6) * 6;
   const l = 0.4 - vars.roast * 0.0014 - strength * 0.0004;
@@ -438,4 +382,3 @@ function Segmented({ options, value, onChange }: { options: { v: string; l: stri
     </div>
   );
 }
-
