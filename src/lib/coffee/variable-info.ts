@@ -15,44 +15,44 @@ export interface VariableInfo {
   lower: string;
 }
 
+// Copy is user-facing — no inline source citations. Provenance is noted in the
+// per-field comments (research/NN) for maintainers, not shown in the UI.
 export const VARIABLE_INFO: Record<keyof BrewVars, VariableInfo> = {
   grind: {
+    // research/01
     what: "How fine or coarse the grounds are — the primary lever on Extraction Yield.",
     // higher value = coarser
     raise:
-      "Coarser grounds expose less surface area and let water flow faster, so less dissolves — the cup drifts toward sour / under-extracted. (research/01)",
+      "Coarser grounds expose less surface area and let water flow faster, so less dissolves — the cup drifts toward sour and under-extracted.",
     lower:
-      "Finer grounds expose far more surface area and slow the flow, so more dissolves — the cup drifts toward bitter / over-extracted. (research/01)",
+      "Finer grounds expose far more surface area and slow the flow, so more dissolves — the cup drifts toward bitter and over-extracted.",
   },
   waterTemp: {
+    // research/02, 05
     what: "How hot the brew water is. SCA filter range ~90–96°C.",
-    raise:
-      "Hotter water extracts faster and higher — pushes toward bitter if it gets too hot. (research/02, 05)",
-    lower:
-      "Cooler water extracts slower and lower — pulls toward sour if it gets too cool. (research/02, 05)",
+    raise: "Hotter water extracts faster and higher — pushes toward bitter if it gets too hot.",
+    lower: "Cooler water extracts slower and lower — pulls toward sour if it gets too cool.",
   },
   ratio: {
+    // research/03
     what: "Coffee dose relative to water (1:X). The lever for Strength (TDS), largely independent of extraction.",
     // higher ratio number = more water
-    raise:
-      "More water per gram of coffee — a weaker, thinner, lower-strength cup. (research/03)",
-    lower:
-      "Less water per gram of coffee — a stronger, more concentrated cup. (research/03)",
+    raise: "More water per gram of coffee — a weaker, thinner, lower-strength cup.",
+    lower: "Less water per gram of coffee — a stronger, more concentrated cup.",
   },
   time: {
+    // research/04
     what: "Total contact time between water and coffee.",
-    raise:
-      "Longer contact dissolves more (with diminishing returns) — pushes toward bitter / over-extracted. (research/04)",
-    lower:
-      "Shorter contact dissolves less — pulls toward sour / under-extracted. (research/04)",
+    raise: "Longer contact dissolves more (with diminishing returns) — pushes toward bitter and over-extracted.",
+    lower: "Shorter contact dissolves less — pulls toward sour and under-extracted.",
   },
   roast: {
+    // research/06
     what: "How dark the beans are roasted (light ↔ dark).",
     // higher value = darker
     raise:
-      "Darker roasts are more soluble and porous, so they extract faster (landing further right on the chart) and taste flatter, less acidic. (research/06)",
-    lower:
-      "Lighter roasts are brighter and more acidic, and extract more slowly. (research/06)",
+      "Darker roasts are more soluble and porous, so they extract faster (landing further right on the chart) and taste flatter, less acidic.",
+    lower: "Lighter roasts are brighter and more acidic, and extract more slowly.",
   },
 };
 

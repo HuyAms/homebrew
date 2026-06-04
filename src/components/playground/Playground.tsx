@@ -478,7 +478,12 @@ export default function Playground() {
         .brew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:22px; height:22px; border-radius:999px; background:#FBF6EA; border:3px solid #A33A28; box-shadow:0 1px 4px rgba(67,53,42,.35); cursor:pointer; }
         .brew-slider::-moz-range-thumb { width:22px; height:22px; border-radius:999px; background:#FBF6EA; border:3px solid #A33A28; cursor:pointer; }
         .ml-15 { margin-left: 3.75rem; }
+        /* Tailwind v4 doesn't give buttons a pointer by default. */
+        button:not(:disabled) { cursor: pointer; }
         .brew-it:hover:not(:disabled) { background:#A33A28 !important; color:#F8F1E2 !important; box-shadow:0 6px 16px -6px rgba(163,58,40,.6); }
+        /* Base colours are inline styles, so hover must use !important to win. */
+        .disc-toggle:hover:not(:disabled) { background:#A33A28 !important; border-color:#A33A28 !important; color:#FBF6EA !important; transform:translateY(-1px); }
+        .disc-toggle:focus-visible { outline:2px solid #A33A28; outline-offset:2px; }
       `}</style>
     </div>
   );
@@ -532,6 +537,8 @@ function Verdict({
   onToggleWhy: () => void;
   onApply: (variable: keyof BrewVars, value: number) => void;
 }) {
+  const whyId = useId();
+  const altsId = useId();
   return (
     <div className="mt-4 border-t pt-3" style={{ borderColor: "#E0D2B8" }}>
       <p className="text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Verdict</p>
@@ -548,18 +555,29 @@ function Verdict({
               Apply
             </button>
           </div>
-          <WhyExpander why={coach.why} open={showWhy} onToggle={onToggleWhy} />
-          {coach.alternatives.length > 0 && (
-            <button onClick={onToggleAlts} className="mt-2 text-xs underline" style={{ color: "#9A8870" }}>
-              {showAlts ? "Hide alternatives" : "Or try…"}
-            </button>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {coach.why && (
+              <DisclosureToggle open={showWhy} onToggle={onToggleWhy} controls={whyId}>
+                Why this fix?
+              </DisclosureToggle>
+            )}
+            {coach.alternatives.length > 0 && (
+              <DisclosureToggle open={showAlts} onToggle={onToggleAlts} controls={altsId}>
+                Other options
+              </DisclosureToggle>
+            )}
+          </div>
+          {showWhy && coach.why && (
+            <p id={whyId} className="mt-2 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
+              {coach.why}
+            </p>
           )}
           {showAlts && (
-            <ul className="mt-2 space-y-1.5">
+            <ul id={altsId} className="mt-2 space-y-1.5">
               {coach.alternatives.map((alt) => (
                 <li key={alt.variable} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                   <span>{alt.instruction}</span>
-                  <button onClick={() => onApply(alt.variable, alt.setValue)} className="shrink-0 text-xs underline" style={{ color: "#A33A28" }}>apply</button>
+                  <button onClick={() => onApply(alt.variable, alt.setValue)} className="shrink-0 rounded px-2 py-0.5 text-xs uppercase tracking-wide" style={{ fontFamily: serif, color: "#A33A28", border: "1px solid #D8B3A8", background: "rgba(163,58,40,.05)" }}>apply</button>
                 </li>
               ))}
             </ul>
@@ -595,6 +613,8 @@ function ReverseFix({
   onApply: (variable: keyof BrewVars, value: number) => void;
   busy: boolean;
 }) {
+  const whyId = useId();
+  const altsId = useId();
   return (
     <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
       <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>How did your cup taste?</p>
@@ -631,18 +651,29 @@ function ReverseFix({
                   Apply
                 </button>
               </div>
-              <WhyExpander why={fix.why} open={showWhy} onToggle={onToggleWhy} />
-              {fix.alternatives.length > 0 && (
-                <button onClick={onToggleAlts} className="mt-2 cursor-pointer text-xs underline" style={{ color: "#9A8870" }}>
-                  {showAlts ? "Hide alternatives" : "Or try…"}
-                </button>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                {fix.why && (
+                  <DisclosureToggle open={showWhy} onToggle={onToggleWhy} controls={whyId} disabled={busy}>
+                    Why this fix?
+                  </DisclosureToggle>
+                )}
+                {fix.alternatives.length > 0 && (
+                  <DisclosureToggle open={showAlts} onToggle={onToggleAlts} controls={altsId} disabled={busy}>
+                    Other options
+                  </DisclosureToggle>
+                )}
+              </div>
+              {showWhy && fix.why && (
+                <p id={whyId} className="mt-2 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
+                  {fix.why}
+                </p>
               )}
               {showAlts && (
-                <ul className="mt-2 space-y-1.5">
+                <ul id={altsId} className="mt-2 space-y-1.5">
                   {fix.alternatives.map((alt) => (
                     <li key={alt.variable} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                       <span>{alt.instruction}</span>
-                      <button onClick={() => onApply(alt.variable, alt.setValue)} disabled={busy} className="shrink-0 cursor-pointer text-xs underline disabled:opacity-60" style={{ color: "#A33A28" }}>apply</button>
+                      <button onClick={() => onApply(alt.variable, alt.setValue)} disabled={busy} className="shrink-0 cursor-pointer rounded px-2 py-0.5 text-xs uppercase tracking-wide disabled:opacity-60" style={{ fontFamily: serif, color: "#A33A28", border: "1px solid #D8B3A8", background: "rgba(163,58,40,.05)" }}>apply</button>
                     </li>
                   ))}
                 </ul>
@@ -800,21 +831,43 @@ function VarInfoTip({ varKey, label, low, high }: { varKey: keyof BrewVars; labe
   );
 }
 
-// "Why?" expander: reveals the reasoning behind the prescribed fix, from the
-// same variable-info source as the slider tooltips. Renders nothing when empty.
-function WhyExpander({ why, open, onToggle }: { why: string; open: boolean; onToggle: () => void }) {
-  if (!why) return null;
+// Disclosure toggle: a clearly-tappable pill (border + rotating caret) that
+// shows/hides a related region. Custom-styled <button> with aria-expanded +
+// aria-controls so it reads as an expander to assistive tech (the controlled
+// region carries the matching id). Used for the Verdict's "Why?" + "Or try…".
+function DisclosureToggle({
+  open,
+  onToggle,
+  controls,
+  children,
+  disabled = false,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls: string;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
   return (
-    <>
-      <button onClick={onToggle} className="mt-2 mr-3 cursor-pointer text-xs underline" style={{ color: "#9A8870" }}>
-        {open ? "Hide why" : "Why?"}
-      </button>
-      {open && (
-        <p className="mt-1 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
-          {why}
-        </p>
-      )}
-    </>
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-expanded={open}
+      aria-controls={controls}
+      className="disc-toggle inline-flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+      style={{
+        fontFamily: serif,
+        border: `1.5px solid ${open ? "#A33A28" : "#C9B795"}`,
+        color: open ? "#A33A28" : "#7A6A57",
+        background: open ? "rgba(163,58,40,.07)" : "#FBF6EA",
+      }}
+    >
+      {children}
+      <svg viewBox="0 0 12 12" className="size-2.5 transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : "none" }} aria-hidden>
+        <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
   );
 }
 
