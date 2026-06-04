@@ -265,10 +265,15 @@ export default function Playground() {
         {/* journal masthead + display toggles */}
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b pb-3" style={{ borderColor: "#D8C9AC" }}>
           <div>
-            <p className="text-xs uppercase tracking-[0.3em]" style={{ color: "#A3917A" }}>Homebrew · Brew Journal</p>
+            <p className="text-xs uppercase tracking-[0.3em]" style={{ color: "#A3917A" }}>Homebrew · Brew Lab</p>
             <h1 className="text-2xl sm:text-3xl" style={{ fontFamily: serif, fontWeight: 600 }}>
               {reverse ? "Fix my cup" : "Explore your cup"}
             </h1>
+            <p className="mt-1 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#9A8870" }}>
+              {reverse
+                ? "Brewed a cup that tasted off? Tell us how, get one fix."
+                : "Dial in the recipe and watch your cup change live."}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Segmented
