@@ -12,7 +12,7 @@
 // The Extraction Engine, Taste Mapper and Coach (src/lib/coffee/) drive the
 // result. Recipe state lives in TanStack Router search params (the single
 // source of truth), so every recipe is shareable and refresh-safe.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { getRouteApi } from "@tanstack/react-router";
 import type {
@@ -33,6 +33,7 @@ import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
 import { VarViz, type VizTheme } from "./visuals";
 import { BrewStage, VarStrip, type ReplayPhase } from "./brew-stage";
 import { ControlChart } from "./control-chart";
+import { PlaygroundPrototype } from "./PlaygroundPrototype"; // PROTOTYPE-ONLY
 
 const route = getRouteApi("/");
 
@@ -40,8 +41,8 @@ const route = getRouteApi("/");
 // only built/fetched on the first Brew, never at module load.
 const brewSound = createBrewSoundPlayer();
 
-const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
-const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
+export const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
+export const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
 
 // Brew-it ritual beats (ms). Reduced motion skips drain/pour and shows a brief
 // steam wisp only (see onBrew).
@@ -127,6 +128,34 @@ export default function Playground() {
     timers.current.push(window.setTimeout(() => setPhase("idle"), DRAIN_MS + POUR_MS + SETTLE_MS));
   };
   const replaying = phase !== "idle";
+
+  // PROTOTYPE-ONLY: ?variant=a|b|c renders a cup-visibility layout experiment.
+  // Absent → the real app below, unchanged. Delete this branch with the prototype.
+  if (search.variant) {
+    return (
+      <PlaygroundPrototype
+        variant={search.variant}
+        method={method}
+        vars={vars}
+        spec={spec}
+        ranges={ranges}
+        result={result}
+        phase={phase}
+        replaying={replaying}
+        hasBrewed={hasBrewed}
+        tempUnit={tempUnit}
+        muted={muted}
+        proView={proView}
+        showAlts={showAlts}
+        setShowAlts={setShowAlts}
+        onBrew={onBrew}
+        setVar={setVar}
+        selectMethod={selectMethod}
+        applyFix={applyFix}
+        patch={patch}
+      />
+    );
+  }
 
   return (
     <div
@@ -258,7 +287,13 @@ export default function Playground() {
 
             {/* Taste profile + verdict (live) */}
             <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-              <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Tasting Notes</p>
+              <InfoTip title="Tasting Notes">
+                A live flavor readout on five <em>positive</em> attributes, each scored 0–100.
+                They're derived from where your brew lands relative to the ideal extraction zone:
+                under-extraction reads sharp &amp; sour, over-extraction tips bitter, and the sweet
+                spot peaks Sweetness &amp; Balance. <em>Acidity</em> here means brightness — a good
+                thing, driven mostly by roast — not the sour defect.
+              </InfoTip>
               <TasteProfile taste={result.taste} />
               <Verdict coach={result.coach} showAlts={showAlts} onToggleAlts={() => setShowAlts((s) => !s)} onApply={applyFix} />
             </div>
@@ -266,7 +301,13 @@ export default function Playground() {
             {/* Pro view: SCA control chart (live) */}
             {proView && (
               <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-                <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Pro · Control Chart</p>
+                <InfoTip title="Pro · Control Chart" className="mb-2">
+                  The <strong>SCA Coffee Brewing Control Chart</strong> — the specialty-coffee
+                  industry standard. It plots <strong>Strength</strong> (TDS %, vertical) against
+                  <strong> Extraction</strong> (EY %, horizontal). Your brew is the dot; the dashed
+                  box is the ideal target (EY ≈ 18–22%, TDS ≈ 1.15–1.45%). Left of the box =
+                  under-extracted (sour), right = over-extracted (bitter); low = weak, high = strong.
+                </InfoTip>
                 <ControlChart
                   result={result.extraction}
                   domain={spec.chart.domain}
@@ -294,7 +335,7 @@ export default function Playground() {
 }
 
 /** Live pre-brew cup colour fallback (the live colour comes from the Taste Mapper). */
-function previewColor(vars: BrewVars): string {
+export function previewColor(vars: BrewVars): string {
   const strength = 100 - (vars.ratio - 6) * 6;
   const l = 0.4 - vars.roast * 0.0014 - strength * 0.0004;
   return `oklch(${Math.max(0.18, l).toFixed(3)} 0.07 60)`;
@@ -309,7 +350,7 @@ const AXES: { key: keyof TasteResult["taste"]; label: string }[] = [
   { key: "balance", label: "Balance" },
 ];
 
-function TasteProfile({ taste }: { taste: TasteResult }) {
+export function TasteProfile({ taste }: { taste: TasteResult }) {
   return (
     <div className="space-y-2">
       {AXES.map((a) => (
@@ -326,7 +367,7 @@ function TasteProfile({ taste }: { taste: TasteResult }) {
 }
 
 // ── verdict (single highest-leverage fix + alternatives) ──────────────────────
-function Verdict({
+export function Verdict({
   coach,
   showAlts,
   onToggleAlts,
@@ -378,7 +419,7 @@ function Verdict({
 // A hand-drawn speaker that sits beside the °C/°F toggle. Unmuted: two sound
 // waves gently pulse outward (the input is drawn + animated). Muted: the waves
 // give way to a struck-through slash.
-function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+export function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   const color = muted ? "#A3917A" : "#A33A28";
   return (
     <button
@@ -415,8 +456,84 @@ function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void 
   );
 }
 
+// ── info tip ───────────────────────────────────────────────────────────────────
+// An "ⓘ" affordance beside a section heading that reveals a plain-language
+// explanation. Opens on hover, keyboard focus, and tap; dismisses on Escape,
+// outside click, or blur. The panel is a DOM child of the wrapper so the pointer
+// can travel into it without closing (WCAG 1.4.13: hoverable + dismissible).
+function InfoTip({ title, children, className = "mb-3" }: { title: string; children: ReactNode; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const closeTimer = useRef<number | undefined>(undefined);
+  const panelId = useId();
+
+  const cancelClose = () => window.clearTimeout(closeTimer.current);
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setOpen(false), 120);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onDown = (e: PointerEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [open]);
+
+  return (
+    <span
+      ref={wrapRef}
+      className={`relative flex w-fit items-center gap-1.5 text-xs uppercase tracking-widest ${className}`}
+      style={{ color: "#A3917A" }}
+      onMouseEnter={() => { cancelClose(); setOpen(true); }}
+      onMouseLeave={scheduleClose}
+    >
+      {title}
+      <button
+        type="button"
+        aria-label={`About ${title}`}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((o) => !o)}
+        onFocus={() => { cancelClose(); setOpen(true); }}
+        onBlur={scheduleClose}
+        className="flex size-4 cursor-pointer items-center justify-center rounded-full normal-case transition-colors"
+        style={{ border: `1.5px solid ${open ? "#A33A28" : "#C9B795"}`, color: open ? "#A33A28" : "#A3917A", fontFamily: serif, fontStyle: "italic", fontSize: "11px", lineHeight: 1 }}
+      >
+        i
+      </button>
+      {open && (
+        <span
+          id={panelId}
+          role="tooltip"
+          className="absolute left-0 top-full z-20 mt-1.5 block rounded-sm p-3 text-left text-[12px] normal-case tracking-normal"
+          style={{
+            width: "min(20rem, calc(100vw - 4rem))",
+            background: "#FBF6EA",
+            border: "1px solid #D8C9AC",
+            boxShadow: "0 12px 28px -14px rgba(67,53,42,.6)",
+            color: "#5A4A3A",
+            fontFamily: serif,
+            fontWeight: 400,
+            lineHeight: 1.55,
+          }}
+        >
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── small toggle controls ─────────────────────────────────────────────────────
-function Segmented({ options, value, onChange }: { options: { v: string; l: string }[]; value: string; onChange: (v: string) => void }) {
+export function Segmented({ options, value, onChange }: { options: { v: string; l: string }[]; value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex overflow-hidden rounded-full" style={{ border: "1.5px solid #D8C9AC" }}>
       {options.map((o) => {
