@@ -20,7 +20,7 @@
 // The Extraction Engine, Taste Mapper and Coach (src/lib/coffee/) drive the
 // result. Recipe state lives in TanStack Router search params (the single
 // source of truth), so every recipe is shareable and refresh-safe.
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { getRouteApi } from "@tanstack/react-router";
 import type {
@@ -822,7 +822,9 @@ function InfoTip({
   inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [shift, setShift] = useState(0);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
   const closeTimer = useRef<number | undefined>(undefined);
   const panelId = useId();
 
@@ -831,6 +833,26 @@ function InfoTip({
     cancelClose();
     closeTimer.current = window.setTimeout(() => setOpen(false), 120);
   };
+
+  // Keep the popover inside the viewport: measure on open and shift it back in.
+  useLayoutEffect(() => {
+    if (!open) { setShift(0); return; }
+    const measure = () => {
+      const el = tipRef.current;
+      if (!el) return;
+      const prev = el.style.transform;
+      el.style.transform = "none";
+      const r = el.getBoundingClientRect();
+      el.style.transform = prev;
+      const m = 8; // viewport margin
+      const overRight = r.right - (window.innerWidth - m);
+      const overLeft = m - r.left;
+      setShift((s) => s + (overRight > 0 ? -overRight : overLeft > 0 ? overLeft : 0));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -874,11 +896,13 @@ function InfoTip({
       </button>
       {open && (
         <span
+          ref={tipRef}
           id={panelId}
           role="tooltip"
           className="absolute left-0 top-full z-20 mt-1.5 block rounded-sm p-3 text-left text-[12px] normal-case tracking-normal"
           style={{
-            width: "min(20rem, calc(100vw - 4rem))",
+            transform: shift ? `translateX(${shift}px)` : undefined,
+            width: "min(20rem, calc(100vw - 1rem))",
             background: "#FBF6EA",
             border: "1px solid #D8C9AC",
             boxShadow: "0 12px 28px -14px rgba(67,53,42,.6)",
