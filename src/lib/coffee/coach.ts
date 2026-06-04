@@ -16,10 +16,14 @@ import type {
   TasteComplaint,
 } from "./types";
 import { methodSpec, type VarRange } from "./methods";
+import { CHANNELING_THRESHOLD, DIALED, hasEvenness } from "./evenness";
 
 export interface CoachInput extends ExtractionResult {
   method: Method;
   currentVars: BrewVars;
+  /** Extraction Evenness (espresso). When low, channeling outranks any position
+   *  fault: the prescription is Puck Prep, not a Variable ("fix prep, not grind"). */
+  evenness?: number;
 }
 
 /** The four single-axis corrections, plus "already there". */
@@ -60,7 +64,24 @@ function makeFix(
   }
 
   const setValue = clamp(roundTo(current + dir * rawDelta, range.step), range.min, range.max);
-  return { variable, instruction: instruction(variable, dir, method, setValue), setValue };
+  return { kind: "variable", variable, instruction: instruction(variable, dir, method, setValue), setValue };
+}
+
+/** The one fix that is not a Variable: dial in the puck prep. Prescribed for the
+ *  Channeling signature (sour & bitter at once) — "fix prep, not grind". */
+function puckPrepFix(): Fix {
+  return {
+    kind: "technique",
+    technique: "puckPrep",
+    instruction: "Tighten your puck prep — WDT + level tamp",
+    setValue: DIALED,
+  };
+}
+
+/** Channeling prescription: the same single Puck Prep fix, with no Variable
+ *  alternatives (the whole point is that no grind number fixes it). */
+function prescribeChanneling(diagnosis: string): CoachResult {
+  return { diagnosis, dialedIn: false, primaryFix: puckPrepFix(), alternatives: [] };
 }
 
 function instruction(variable: keyof BrewVars, dir: 1 | -1, method: Method, setValue: number): string {
@@ -123,7 +144,7 @@ function prescribe(dir: Direction, method: Method, vars: BrewVars): CoachResult 
     return {
       diagnosis: DIAGNOSIS.ok,
       dialedIn: true,
-      primaryFix: { variable: "ratio", instruction: "No change — enjoy it", setValue: vars.ratio },
+      primaryFix: { kind: "variable", variable: "ratio", instruction: "No change — enjoy it", setValue: vars.ratio },
       alternatives: [],
     };
   }
@@ -148,8 +169,17 @@ function classify(result: ExtractionResult, method: Method): Direction {
   return "ok";
 }
 
-/** Forward mode: coach from where the brew currently sits. */
+/** Forward mode: coach from where the brew currently sits. Low Extraction
+ *  Evenness (espresso) outranks any position fault — channeling is a Technique
+ *  problem, so the Verdict flips to "fix prep, not grind". */
 export function coach(input: CoachInput): CoachResult {
+  if (
+    hasEvenness(input.method) &&
+    input.evenness !== undefined &&
+    input.evenness < CHANNELING_THRESHOLD
+  ) {
+    return prescribeChanneling("Uneven extraction — fix prep, not grind");
+  }
   const dir = classify(
     { extractionYield: input.extractionYield, tds: input.tds },
     input.method,
@@ -157,7 +187,9 @@ export function coach(input: CoachInput): CoachResult {
   return prescribe(dir, input.method, input.currentVars);
 }
 
-const COMPLAINT_DIR: Record<TasteComplaint, Direction> = {
+// Every complaint except "harsh" maps 1:1 to a chart direction. "harsh" (sour &
+// bitter at once) is not a chart position — it is Channeling, handled separately.
+const COMPLAINT_DIR: Record<Exclude<TasteComplaint, "harsh">, Direction> = {
   sour: "raise-ey",
   bitter: "lower-ey",
   weak: "raise-tds",
@@ -165,11 +197,15 @@ const COMPLAINT_DIR: Record<TasteComplaint, Direction> = {
   "just-right": "ok",
 };
 
-/** Reverse mode ("Fix my cup"): coach from a taste complaint. */
+/** Reverse mode ("Fix my cup"): coach from a taste complaint. "harsh" prescribes
+ *  Puck Prep (the only complaint whose fix is a Technique, not a Variable). */
 export function coachFromComplaint(
   complaint: TasteComplaint,
   method: Method,
   currentVars: BrewVars,
 ): CoachResult {
+  if (complaint === "harsh") {
+    return prescribeChanneling("Sour & bitter at once — channeling");
+  }
   return prescribe(COMPLAINT_DIR[complaint], method, currentVars);
 }

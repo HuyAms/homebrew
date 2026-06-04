@@ -79,6 +79,11 @@ export function fmtRoast(v: number): string {
   return v < 33 ? "Light" : v < 66 ? "Medium" : "Dark";
 }
 
+/** Puck Prep (Technique) readout: 0 sloppy → 1 dialed. */
+export function fmtPuckPrep(v: number): string {
+  return v < 0.25 ? "Sloppy" : v < 0.55 ? "Loose" : v < 0.8 ? "Even" : "Dialed";
+}
+
 /** One-call value formatter used by the sliders. */
 export function fmtVar(
   key: keyof BrewVars,

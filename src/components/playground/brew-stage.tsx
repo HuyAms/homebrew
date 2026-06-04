@@ -30,9 +30,12 @@ export interface BrewStageProps {
   cup?: CupVisual;
   cupBody: string;
   cupRim: string;
+  /** Extraction Evenness, 0 channeling → 1 dialed (espresso). Low evenness makes
+   *  the bottomless pull spray sideways instead of converging (research/08). */
+  evenness?: number;
 }
 
-export function BrewStage({ method, theme, liquid, phase, filled, cup, cupBody, cupRim }: BrewStageProps) {
+export function BrewStage({ method, theme, liquid, phase, filled, cup, cupBody, cupRim, evenness = 1 }: BrewStageProps) {
   const reduced = useReducedMotion();
   const anim: BrewAnimation = methodSpec(method).animation;
   const fillColor = cup ? cup.color : liquid;
@@ -67,7 +70,7 @@ export function BrewStage({ method, theme, liquid, phase, filled, cup, cupBody, 
         <MethodArt method={method} theme={theme} hideVessel className="h-24 w-24" />
       </motion.div>
 
-      <DripLayer anim={anim} color={fillColor} pouring={pouring} />
+      <DripLayer anim={anim} color={fillColor} pouring={pouring} evenness={evenness} />
 
       <div className="relative -mt-1">
         <div className="relative h-40 w-44 overflow-hidden rounded-b-[5rem] rounded-t-2xl border-4" style={{ borderColor: cupRim, background: cupBody }}>
@@ -155,14 +158,17 @@ function Steam({ reduced }: { reduced: boolean }) {
 }
 
 /** The stuff falling between brewer and cup during the re-pour, varied by method. */
-function DripLayer({ anim, color, pouring }: { anim: BrewAnimation; color: string; pouring: boolean }) {
+function DripLayer({ anim, color, pouring, evenness = 1 }: { anim: BrewAnimation; color: string; pouring: boolean; evenness?: number }) {
   if (!pouring) return <div className="relative -mt-1 h-5 w-4" />;
 
   // Cold brew: no falling stream, it just steeps — show nothing here.
   if (anim === "steep") return <div className="relative -mt-1 h-5 w-4" />;
 
-  // Espresso: a continuous thin twin stream.
+  // Espresso: a bottomless pull. Dialed → a clean, converging twin stream.
+  // Sloppy → channeling: thin jets squirt sideways at angles and sputter, never
+  // converging to one column (research/08 — the naked-portafilter spray).
   if (anim === "pull") {
+    if (evenness < 0.6) return <SprayLayer color={color} evenness={evenness} />;
     return (
       <div className="relative -mt-1 h-5 w-6">
         {[-1.5, 1.5].map((dx, i) => (
@@ -191,6 +197,27 @@ function DripLayer({ anim, color, pouring }: { anim: BrewAnimation; color: strin
           style={{ background: color }}
           animate={{ y: [0, 20], opacity: [0, 1, 0] }}
           transition={{ repeat: Infinity, duration, delay: i * stagger, ease: "easeIn" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Channeling spray: thin jets squirting sideways at varied angles, sputtering,
+ *  with pale "blonde" streaks — the bottomless-portafilter signature of an
+ *  uneven puck (research/08). The fan widens as evenness drops. */
+function SprayLayer({ color, evenness }: { color: string; evenness: number }) {
+  const intensity = 1 - evenness; // ~0.4 (loose) → 1 (fully channeling)
+  const jets = [-40, -22, -8, 8, 24, 44];
+  return (
+    <div className="relative -mt-1 h-5 w-6">
+      {jets.map((a, i) => (
+        <motion.span
+          key={i}
+          className="absolute left-1/2 top-0 h-5 w-[1.5px] rounded-full"
+          style={{ background: i % 3 === 0 ? "#E8D7B8" : color, transformOrigin: "top center", rotate: a * (0.6 + intensity * 0.6) }}
+          animate={{ scaleY: [0.15, 1, 0.35, 0.9, 0.2], opacity: [0.2, 1, 0.3, 0.85, 0.25] }}
+          transition={{ repeat: Infinity, duration: 0.22 + (i % 3) * 0.06, ease: "easeIn", delay: i * 0.04 }}
         />
       ))}
     </div>

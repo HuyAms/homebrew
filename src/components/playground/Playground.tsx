@@ -26,7 +26,9 @@ import { getRouteApi } from "@tanstack/react-router";
 import type {
   BrewVars,
   CoachResult,
+  EvennessResult,
   ExtractionResult,
+  Fix,
   Method,
   TasteComplaint,
   TasteResult,
@@ -36,11 +38,12 @@ import { mapTaste } from "@/lib/coffee/taste-mapper";
 import { coach, coachFromComplaint } from "@/lib/coffee/coach";
 import { cupFromComplaint } from "@/lib/coffee/cup-from-complaint";
 import { grindReference } from "@/lib/coffee/grind";
+import { DIALED, evennessFromPuckPrep, hasEvenness } from "@/lib/coffee/evenness";
 import { methodSpec } from "@/lib/coffee/methods";
 import { defaultSearchVars, type BrewSearch, type Mode } from "@/lib/brew-search";
 import { createBrewSoundPlayer } from "@/lib/sound/player";
-import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
-import { VarViz, type VizTheme } from "./visuals";
+import { METHODS, VAR_META, varRanges, fmtVar, fmtPuckPrep, ratioGrams } from "./config";
+import { PuckPrepViz, VarViz, type VizTheme } from "./visuals";
 import { BrewStage, VarStrip, type ReplayPhase } from "./brew-stage";
 import { ControlChart } from "./control-chart";
 
@@ -64,31 +67,56 @@ interface BrewResult {
   extraction: ExtractionResult;
   taste: TasteResult;
   coach: CoachResult;
+  /** Extraction Evenness (espresso). Dialed/single-point for other methods. */
+  evenness: EvennessResult;
 }
 
-function runBrew(method: Method, vars: BrewVars): BrewResult {
+function runBrew(method: Method, vars: BrewVars, puckPrep: number): BrewResult {
   const extraction = extractFrom(method, vars);
-  const taste = mapTaste({ ...extraction, roast: vars.roast, method });
-  const coachResult = coach({ ...extraction, method, currentVars: vars });
-  return { extraction, taste, coach: coachResult };
+  // Evenness is espresso-only; other methods stay a single dialed point.
+  const evenness = hasEvenness(method)
+    ? evennessFromPuckPrep(puckPrep, extraction)
+    : { evenness: DIALED, underEY: extraction.extractionYield, overEY: extraction.extractionYield };
+  const taste = mapTaste({ ...extraction, roast: vars.roast, method, evenness: evenness.evenness });
+  const coachResult = coach({
+    ...extraction,
+    method,
+    currentVars: vars,
+    evenness: hasEvenness(method) ? evenness.evenness : undefined,
+  });
+  return { extraction, taste, coach: coachResult, evenness };
 }
 
-// Reverse-mode taste complaints, in the order they're offered. Each maps 1:1 to
-// a control-chart direction inside the Coach (coachFromComplaint).
-const COMPLAINTS: { id: TasteComplaint; label: string; note: string }[] = [
+// Reverse-mode taste complaints, in the order they're offered. Most map 1:1 to a
+// control-chart direction inside the Coach; "harsh" (espresso-only) is the
+// channeling signature and prescribes Puck Prep, not a Variable.
+const COMPLAINTS: { id: TasteComplaint; label: string; note: string; espressoOnly?: boolean }[] = [
   { id: "sour", label: "Sour", note: "sharp, under-extracted" },
   { id: "bitter", label: "Bitter", note: "harsh, over-extracted" },
   { id: "weak", label: "Weak / watery", note: "thin, low strength" },
   { id: "too-strong", label: "Too strong", note: "intense, high strength" },
+  { id: "harsh", label: "Sour & bitter at once", note: "channeling — fix puck prep", espressoOnly: true },
   { id: "just-right", label: "Just right", note: "in the sweet spot" },
 ];
+
+/** Turn a Fix into a search-param patch — a Variable's value, or the Puck Prep
+ *  Technique. (Apply can write either; ADR-0003.) */
+function fixPatch(fix: Fix): Partial<BrewSearch> {
+  return fix.kind === "technique"
+    ? { puckPrep: fix.setValue }
+    : ({ [fix.variable]: fix.setValue } as Partial<BrewSearch>);
+}
+
+/** Stable React key for a Fix (Variable name or Technique name). */
+const fixKey = (fix: Fix): string => (fix.kind === "technique" ? fix.technique : fix.variable);
 
 export default function Playground() {
   // Search params are the single source of truth for the persistent recipe.
   const search = route.useSearch();
   const navigate = route.useNavigate();
-  const { method, mode, pro: proView, unit: tempUnit, muted } = search;
+  const { method, mode, pro: proView, unit: tempUnit, muted, puckPrep } = search;
   const reverse = mode === "reverse";
+  const espresso = hasEvenness(method); // Puck Prep / channeling is espresso-only
   const vars: BrewVars = {
     grind: search.grind,
     waterTemp: search.waterTemp,
@@ -117,7 +145,7 @@ export default function Playground() {
   const ranges = varRanges(method);
 
   // The result is derived live from the current recipe every render — no gate.
-  const result = runBrew(method, vars);
+  const result = runBrew(method, vars, puckPrep);
 
   // Reverse: prescribe a fix from the reported taste; render "the cup you made"
   // biased toward that fault (Trust the tongue — the simulation is not shown).
@@ -134,6 +162,7 @@ export default function Playground() {
     navigate({ search: (prev) => ({ ...prev, ...p }), replace: true, resetScroll: false });
 
   const setVar = (k: keyof BrewVars, v: number) => patch({ [k]: v } as Partial<BrewSearch>);
+  const setPuckPrep = (v: number) => patch({ puckPrep: v });
   const selectMethod = (m: Method) => {
     setComplaint(null);
     patch({ method: m, ...defaultSearchVars(m) });
@@ -165,18 +194,19 @@ export default function Playground() {
     timers.current.push(window.setTimeout(() => setPhase("idle"), DRAIN_MS + POUR_MS + SETTLE_MS));
   };
 
-  // Forward Apply: write the fix into the live recipe (the cup follows live).
-  const applyFix = (variable: keyof BrewVars, value: number) =>
-    patch({ [variable]: value } as Partial<BrewSearch>);
+  // Forward Apply: write the fix into the live recipe (Variable or Puck Prep);
+  // the cup follows live.
+  const applyFix = (fix: Fix) => patch(fixPatch(fix));
 
-  // Reverse Apply: write the fix, clear the resolved complaint, then re-brew —
-  // the bad cup drains and the corrected cup pours back in, with sound, exactly
-  // like Brew it. (Trust the tongue: the resolved complaint is cleared.)
-  const applyReverseFix = (variable: keyof BrewVars, value: number) => {
+  // Reverse Apply: write the fix (Variable or Puck Prep), clear the resolved
+  // complaint, then re-brew — the bad cup drains and the corrected cup pours
+  // back in, with sound, exactly like Brew it. (Trust the tongue: the resolved
+  // complaint is cleared.)
+  const applyReverseFix = (fix: Fix) => {
     if (phase !== "idle") return;
     setShowAlts(false);
     setComplaint(null); // the fault is now resolved; the recipe is corrected
-    patch({ [variable]: value } as Partial<BrewSearch>);
+    patch(fixPatch(fix));
     runRitual();
   };
 
@@ -292,6 +322,41 @@ export default function Playground() {
                 );
               })}
             </div>
+
+            {/* Technique — Puck Prep (espresso only). A different *kind* of input
+                from a Variable: it moves the spread (Extraction Evenness), never
+                the dose/grind/ratio numbers (ADR-0003). */}
+            {espresso && (
+              <div className="mt-6 border-t pt-5" style={{ borderColor: "#E8DCC6" }}>
+                <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Technique</p>
+                <div className="flex items-center gap-4">
+                  <div className="size-11 shrink-0 overflow-hidden rounded-lg" style={{ border: "1px solid #E0D2B8" }}>
+                    <PuckPrepViz value={puckPrep} theme={theme} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <label className="text-lg" style={{ fontFamily: serif }}>Puck Prep</label>
+                      <span className="text-lg font-semibold tabular-nums" style={{ fontFamily: serif, color: "#A33A28" }}>
+                        {fmtPuckPrep(puckPrep)}
+                      </span>
+                    </div>
+                    <input
+                      type="range" min={0} max={1} step={0.05} value={puckPrep}
+                      onChange={(e) => setPuckPrep(Number(e.target.value))}
+                      aria-label="Puck Prep"
+                      className="brew-slider w-full"
+                    />
+                    <div className="mt-1 flex justify-between text-[11px]" style={{ color: "#A3917A" }}>
+                      <span>Sloppy</span>
+                      <span>Dialed</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="ml-15 mt-1 text-[11px]" style={{ color: "#9A8870" }}>
+                  WDT + level tamp. Low prep channels — sour &amp; bitter at once, not a grind problem.
+                </p>
+              </div>
+            )}
           </section>
 
           {/* ── Result (live) ── */}
@@ -309,6 +374,7 @@ export default function Playground() {
                   filled={reverse ? true : hasBrewed}
                   cupBody="#FFFDF7"
                   cupRim="#6F5D49"
+                  evenness={result.evenness.evenness}
                 />
               </div>
               <div className="mt-5">
@@ -345,6 +411,7 @@ export default function Playground() {
                 complaint={complaint}
                 onPick={setComplaint}
                 fix={reverseFix}
+                espresso={espresso}
                 showAlts={showAlts}
                 onToggleAlts={() => setShowAlts((s) => !s)}
                 onApply={applyReverseFix}
@@ -381,6 +448,7 @@ export default function Playground() {
                   idealBox={spec.chart.ideal}
                   tdsDecimals={method === "espresso" ? 1 : 2}
                   className="w-full"
+                  smear={espresso ? { underEY: result.evenness.underEY, overEY: result.evenness.overEY, evenness: result.evenness.evenness } : undefined}
                 />
                 <p className="mt-1 text-center text-[11px]" style={{ color: "#9A8870" }}>
                   EY {result.extraction.extractionYield}% · TDS {result.extraction.tds}%
@@ -444,7 +512,7 @@ function Verdict({
   coach: CoachResult;
   showAlts: boolean;
   onToggleAlts: () => void;
-  onApply: (variable: keyof BrewVars, value: number) => void;
+  onApply: (fix: Fix) => void;
 }) {
   return (
     <div className="mt-4 border-t pt-3" style={{ borderColor: "#E0D2B8" }}>
@@ -456,7 +524,7 @@ function Verdict({
         <>
           <div className="mt-1 flex items-center justify-between gap-3">
             <p className="text-lg" style={{ fontFamily: serif, fontWeight: 600 }}>{coach.primaryFix.instruction}</p>
-            <button onClick={() => onApply(coach.primaryFix.variable, coach.primaryFix.setValue)}
+            <button onClick={() => onApply(coach.primaryFix)}
               className="shrink-0 rounded-md px-4 py-1.5 text-sm uppercase tracking-wide"
               style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2", background: "#A33A28" }}>
               Apply
@@ -470,9 +538,9 @@ function Verdict({
           {showAlts && (
             <ul className="mt-2 space-y-1.5">
               {coach.alternatives.map((alt) => (
-                <li key={alt.variable} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
+                <li key={fixKey(alt)} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                   <span>{alt.instruction}</span>
-                  <button onClick={() => onApply(alt.variable, alt.setValue)} className="shrink-0 text-xs underline" style={{ color: "#A33A28" }}>apply</button>
+                  <button onClick={() => onApply(alt)} className="shrink-0 text-xs underline" style={{ color: "#A33A28" }}>apply</button>
                 </li>
               ))}
             </ul>
@@ -491,6 +559,7 @@ function ReverseFix({
   complaint,
   onPick,
   fix,
+  espresso,
   showAlts,
   onToggleAlts,
   onApply,
@@ -499,16 +568,19 @@ function ReverseFix({
   complaint: TasteComplaint | null;
   onPick: (c: TasteComplaint) => void;
   fix: CoachResult | null;
+  /** "Sour & bitter at once" (channeling) is offered only for espresso. */
+  espresso: boolean;
   showAlts: boolean;
   onToggleAlts: () => void;
-  onApply: (variable: keyof BrewVars, value: number) => void;
+  onApply: (fix: Fix) => void;
   busy: boolean;
 }) {
+  const complaints = COMPLAINTS.filter((c) => espresso || !c.espressoOnly);
   return (
     <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
       <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>How did your cup taste?</p>
       <div className="flex flex-wrap gap-2">
-        {COMPLAINTS.map((c) => {
+        {complaints.map((c) => {
           const active = complaint === c.id;
           return (
             <button key={c.id} onClick={() => onPick(c.id)} aria-pressed={active} title={c.note}
@@ -534,7 +606,7 @@ function ReverseFix({
               <p className="text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>The one fix</p>
               <div className="mt-1 flex items-center justify-between gap-3">
                 <p className="text-lg" style={{ fontFamily: serif, fontWeight: 600 }}>{fix.primaryFix.instruction}</p>
-                <button onClick={() => onApply(fix.primaryFix.variable, fix.primaryFix.setValue)} disabled={busy}
+                <button onClick={() => onApply(fix.primaryFix)} disabled={busy}
                   className="shrink-0 cursor-pointer rounded-md px-4 py-1.5 text-sm uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2", background: "#A33A28" }}>
                   Apply
@@ -548,9 +620,9 @@ function ReverseFix({
               {showAlts && (
                 <ul className="mt-2 space-y-1.5">
                   {fix.alternatives.map((alt) => (
-                    <li key={alt.variable} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
+                    <li key={fixKey(alt)} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                       <span>{alt.instruction}</span>
-                      <button onClick={() => onApply(alt.variable, alt.setValue)} disabled={busy} className="shrink-0 cursor-pointer text-xs underline disabled:opacity-60" style={{ color: "#A33A28" }}>apply</button>
+                      <button onClick={() => onApply(alt)} disabled={busy} className="shrink-0 cursor-pointer text-xs underline disabled:opacity-60" style={{ color: "#A33A28" }}>apply</button>
                     </li>
                   ))}
                 </ul>

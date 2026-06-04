@@ -14,6 +14,11 @@ import { methodSpec } from "./methods";
 export interface TasteMapperInput extends ExtractionResult {
   roast: number;
   method: Method;
+  /** Extraction Evenness, 0 channeling → 1 dialed (espresso). Defaults to 1
+   *  (dialed) for the single-point methods. Low evenness is the sour-and-bitter-
+   *  at-once signature: it raises bitterness AND acidity together, tanks
+   *  balance/sweetness, and breaks crema (research/08). */
+  evenness?: number;
 }
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
@@ -25,6 +30,8 @@ export function mapTaste(input: TasteMapperInput): TasteResult {
   const spec = methodSpec(input.method);
   const { extractionYield: ey, tds, roast } = input;
   const roastT = roast / 100; // 0 light → 1 dark
+  // 0 dialed → 1 fully channeling. Both faults present at once at high values.
+  const channeling = 1 - clamp01(input.evenness ?? 1);
 
   // Extraction position relative to the ideal centre.
   const under = Math.max(0, IDEAL_EY - ey); // %below ideal → sour
@@ -34,27 +41,33 @@ export function mapTaste(input: TasteMapperInput): TasteResult {
   // by roast (light = bright, dark = flat), then modulated by extraction: acids
   // dissolve first, so under-extraction reads sharp/bright, while over-extraction
   // mutes perceived acidity as bitterness masks it. Never 0 except very dark.
-  const acidity = pct((1 - roastT) * 65 + 15 + under * 6 - over * 4.5);
+  // Channeling pushes it up — the bypassed bulk under-extracts (sharp/sour).
+  const acidity = pct((1 - roastT) * 65 + 15 + under * 6 - over * 4.5 + channeling * 38);
   // Bitterness rises as we over-extract; dark roast adds roasty bitterness.
-  const bitterness = pct(over * 13 + roastT * 28);
-  // Sweetness peaks in the ideal zone and falls off either side.
-  const sweetness = pct(100 - Math.abs(ey - IDEAL_EY) * 12);
+  // Channeling pushes it up too — the fast channels over-extract (harsh/bitter).
+  const bitterness = pct(over * 13 + roastT * 28 + channeling * 42);
+  // Sweetness peaks in the ideal zone, falls off either side, and is muddied by
+  // channeling (the cup never resolves to clean sweetness).
+  const sweetness = pct((100 - Math.abs(ey - IDEAL_EY) * 12) * (1 - channeling * 0.7));
 
   // Body: strength within the method's band, plus a filter/oil bonus.
   const band = spec.chart.ideal;
   const strengthT = clamp01((tds - band.tdsMin) / Math.max(0.001, band.tdsMax - band.tdsMin));
   const body = pct((0.35 + strengthT * 0.5 + spec.filterBody * 0.5) * 100);
 
-  // Balance: best when extraction sits in-box and strength sits in-band.
+  // Balance: best when extraction sits in-box and strength sits in-band; wrecked
+  // by channeling — sour and bitter at once is the least balanced cup there is.
   const eyMiss = Math.abs(ey - IDEAL_EY) / 4; // 0 at centre, 1 at box edge
   const tdsMiss = Math.abs(strengthT - 0.5) * 2; // 0 centred, 1 at band edge
-  const balance = pct(100 - eyMiss * 45 - tdsMiss * 25);
+  const balance = pct(100 - eyMiss * 45 - tdsMiss * 25 - channeling * 55);
 
   return {
     taste: { acidity, sweetness, bitterness, body, balance },
     cup: {
       color: cupColor(roastT, strengthT, ey),
-      crema: round2(crema(spec.crema, ey)),
+      // Channeling breaks the crema: the puck sprays rather than building an
+      // even, glossy flow (research/08).
+      crema: round2(crema(spec.crema, ey) * (1 - channeling * 0.85)),
       body: round2(0.3 + strengthT * 0.45 + spec.filterBody * 0.45),
     },
   };

@@ -31,6 +31,10 @@ export function cupFromComplaint(
   // Start dead-centre of the ideal box; each fault shoves one axis out.
   let extractionYield = (ideal.eyMin + ideal.eyMax) / 2;
   let tds = (ideal.tdsMin + ideal.tdsMax) / 2;
+  // Channeling ("harsh") is rendered through low evenness rather than a chart
+  // position: it muddies the colour and breaks the crema (the cup you made when
+  // the shot sprayed). Dialed (1) for every position fault.
+  let evenness = 1;
 
   switch (complaint) {
     case "sour": // under-extracted — left of the box
@@ -47,7 +51,11 @@ export function cupFromComplaint(
       break;
     case "just-right": // dead-centre of the ideal box
       break;
+    case "harsh": // channeling — sour & bitter at once; muddied, broken crema
+      extractionYield = ideal.eyMax + eySpan * (EY_OVERSHOOT * 0.5);
+      evenness = 0.12;
+      break;
   }
 
-  return mapTaste({ extractionYield, tds, roast: vars.roast, method }).cup;
+  return mapTaste({ extractionYield, tds, roast: vars.roast, method, evenness }).cup;
 }

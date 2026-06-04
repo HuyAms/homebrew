@@ -3,6 +3,7 @@
 // A tinted "ideal" target box marks the sweet spot; the current brew is a dot
 // that springs to its new position as the recipe changes. Method-relative
 // scale (espresso/phin run on their own domains) is passed in via props.
+import { useId } from "react";
 import { motion } from "motion/react";
 import type { ExtractionResult } from "@/lib/coffee/types";
 
@@ -13,12 +14,25 @@ export interface ChartBox {
   tdsMax: number;
 }
 
+/** Low Extraction Evenness (espresso channeling): the brew is no longer a single
+ *  point but a smear spanning the under- and over-extracted lobes at once. */
+export interface Smear {
+  /** EY of the under-extracted (bypassed) lobe — the sour end. */
+  underEY: number;
+  /** EY of the over-extracted (channel) lobe — the bitter end. */
+  overEY: number;
+  /** 0 channeling → 1 dialed. At 1 there is no smear (a single dot). */
+  evenness: number;
+}
+
 export interface ControlChartProps {
   result: ExtractionResult;
   domain?: ChartBox;
   idealBox?: ChartBox;
   tdsDecimals?: number;
   className?: string;
+  /** When evenness is low, render a smear/split instead of a single dot. */
+  smear?: Smear;
 }
 
 const FALLBACK_DOMAIN: ChartBox = { eyMin: 14, eyMax: 26, tdsMin: 0.8, tdsMax: 1.8 };
@@ -49,7 +63,9 @@ export function ControlChart({
   idealBox = FALLBACK_IDEAL,
   tdsDecimals = 2,
   className,
+  smear,
 }: ControlChartProps) {
+  const clipId = useId();
   const x = (ey: number) => padL + ((ey - domain.eyMin) / (domain.eyMax - domain.eyMin)) * plotW;
   const y = (tds: number) => padT + (1 - (tds - domain.tdsMin) / (domain.tdsMax - domain.tdsMin)) * plotH;
 
@@ -110,9 +126,51 @@ export function ControlChart({
         ↑ Strength (TDS %)
       </text>
 
-      {/* current brew */}
-      <motion.circle cx={dotX} cy={dotY} r={9} fill={ACCENT} opacity={0.18} animate={{ cx: dotX, cy: dotY }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
-      <motion.circle cx={dotX} cy={dotY} r={4.5} fill={ACCENT} stroke={PAPER} strokeWidth={1.4} animate={{ cx: dotX, cy: dotY }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
+      {/* keep the dot/dots clipped to the plot so a wide smear can never bleed
+          past the axes (spring overshoot included). */}
+      <clipPath id={clipId}>
+        <rect x={padL} y={padT} width={plotW} height={plotH} />
+      </clipPath>
+
+      {/* current brew: a single dot when even, a smear/split spanning the under-
+          and over-extracted lobes when evenness is low (channeling). */}
+      <g clipPath={`url(#${clipId})`}>
+        {smear && smear.evenness < 0.99 ? (
+          <BrewSmear smear={smear} x={x} dotY={dotY} />
+        ) : (
+          <>
+            <motion.circle cx={dotX} cy={dotY} r={9} fill={ACCENT} opacity={0.18} animate={{ cx: dotX, cy: dotY }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
+            <motion.circle cx={dotX} cy={dotY} r={4.5} fill={ACCENT} stroke={PAPER} strokeWidth={1.4} animate={{ cx: dotX, cy: dotY }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
+          </>
+        )}
+      </g>
     </svg>
+  );
+}
+
+/** The non-point brew state: a capsule smeared from the under-extracted (sour)
+ *  lobe to the over-extracted (bitter) lobe, with a dot anchoring each end — the
+ *  visual that the cup is two problems at once, not one. */
+function BrewSmear({ smear, x, dotY }: { smear: Smear; x: (ey: number) => number; dotY: number }) {
+  const lo = clamp(x(smear.underEY), padL + 3, padL + plotW - 3);
+  const hi = clamp(x(smear.overEY), padL + 3, padL + plotW - 3);
+  const channeling = 1 - smear.evenness;
+  const mid = (lo + hi) / 2;
+  const r = 7;
+  const width = Math.max(2, hi - lo);
+  return (
+    <motion.g animate={{ opacity: 1 }} initial={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+      {/* the smear capsule (clipped to the plot by the parent group) */}
+      <motion.rect
+        y={dotY - r} rx={r} height={r * 2} fill={ACCENT}
+        initial={false}
+        animate={{ x: lo, width, opacity: 0.14 + channeling * 0.16 }}
+        transition={{ type: "spring", stiffness: 140, damping: 24 }}
+      />
+      {/* the two extracting lobes: sour (under) on the left, bitter (over) right */}
+      <motion.circle cy={dotY} r={4.5} fill={ACCENT} stroke={PAPER} strokeWidth={1.4} animate={{ cx: lo, opacity: 0.55 + channeling * 0.45 }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
+      <motion.circle cy={dotY} r={4.5} fill={ACCENT} stroke={PAPER} strokeWidth={1.4} animate={{ cx: hi, opacity: 0.55 + channeling * 0.45 }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
+      <motion.circle cy={dotY} r={2.5} fill={ACCENT} opacity={0.4} animate={{ cx: mid }} transition={{ type: "spring", stiffness: 120, damping: 18 }} />
+    </motion.g>
   );
 }

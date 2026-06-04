@@ -23,7 +23,13 @@ export interface BrewSearch extends BrewVars {
   unit: TempUnit;
   /** Brew-it sound muted. Default off; shareable + refresh-safe. */
   muted: boolean;
+  /** Puck Prep Technique, 0 sloppy → 1 dialed (espresso-only; ADR-0003). Only
+   *  read for espresso; default dialed so existing brews stay clean/even. */
+  puckPrep: number;
 }
+
+/** Puck Prep is a 0–1 Technique slider; clamp + snap to a sensible step. */
+const PUCK_PREP_STEP = 0.05;
 
 const isMethod = (v: unknown): v is Method => typeof v === "string" && v in METHOD_SPECS;
 
@@ -65,6 +71,8 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     unit: raw.unit === "F" ? "F" : "C",
     // Sound on by default; only the explicit `muted=true` silences Brew it.
     muted: bool(raw.muted),
+    // Dialed by default → no channeling unless the user sloppies the prep.
+    puckPrep: clamp(Math.round(num(raw.puckPrep, 1) / PUCK_PREP_STEP) * PUCK_PREP_STEP, 0, 1),
   };
 }
 

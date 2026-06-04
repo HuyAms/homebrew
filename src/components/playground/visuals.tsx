@@ -114,6 +114,39 @@ function RoastViz({ value, theme }: { value: number; theme: VizTheme }) {
   );
 }
 
+// Puck Prep (Technique, espresso): a portafilter basket seen top-down. Dialed →
+// a smooth, evenly-speckled bed. Sloppy → an uneven bed with a jagged channel
+// crack and pale "blonde" patches where water would race through (research/08).
+const PUCK: [number, number][] = (() => {
+  const out: [number, number][] = [];
+  for (let y = 8; y <= 24; y += 4) for (let x = 8; x <= 24; x += 4) {
+    if ((x - 16) ** 2 + (y - 16) ** 2 <= 9 * 9) out.push([x, y]);
+  }
+  return out;
+})();
+export function PuckPrepViz({ value, theme }: { value: number; theme: VizTheme }) {
+  const even = clamp01(value); // 0 sloppy → 1 dialed
+  const sloppy = 1 - even;
+  return (
+    <svg viewBox="0 0 32 32" className="size-full">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill={theme.bed} />
+      {/* basket ring + the coffee bed */}
+      <circle cx="16" cy="16" r="11.5" fill="none" stroke={theme.stroke} strokeWidth="1.5" />
+      <circle cx="16" cy="16" r="9.5" fill={theme.mark} opacity={0.9} />
+      {/* even speckle — tightens to a uniform grid as prep dials in */}
+      {PUCK.map(([x, y], i) => {
+        const jitter = sloppy * (((x * 5 + y * 11) % 5) - 2) * 0.7;
+        return <circle key={i} cx={x + jitter} cy={y - jitter} r={0.9} fill="#FBF6EA" opacity={0.18 + even * 0.3} />;
+      })}
+      {/* channeling: a jagged crack + pale blonde patches, fading as prep improves */}
+      <path d="M16 7 L14 12 L18 16 L13.5 21 L16 25" fill="none" stroke={theme.accent} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity={sloppy * 0.9} />
+      {[[11, 12], [21, 19]].map(([x, y], i) => (
+        <ellipse key={i} cx={x} cy={y} rx="2.4" ry="1.6" fill="#F0D9B5" opacity={sloppy * 0.7} />
+      ))}
+    </svg>
+  );
+}
+
 export function VarViz({
   varKey, value, theme, range,
 }: {
