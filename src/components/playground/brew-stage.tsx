@@ -1,72 +1,126 @@
-// Result stage: the chosen brewer sits ABOVE the cup and, on Brew, plays a
-// method-specific animation (pour / drip / press / pull / steep) while the cup
-// fills. Once brewed, the cup shows the real CupVisual (colour, crema, body)
-// from the Taste Mapper. VarStrip mirrors the five Variable visuals beside it.
-import { motion } from "motion/react";
+// Result stage: the chosen brewer sits ABOVE a cup that is always LIVE — it
+// shows the current recipe's CupVisual (colour, crema, body) every render, with
+// no brew gate. Pressing Brew replays a method-specific ritual purely for
+// delight: the cup drains to empty, the brewer tilts and pours a falling stream
+// that refills it, the surface blooms (an expanding ripple) and gently swirls
+// as it settles, and steam rises near the end. It changes no data; afterward
+// the cup returns to its live state. VarStrip mirrors the five Variable visuals.
+import { motion, useReducedMotion } from "motion/react";
 import type { BrewVars, CupVisual, Method } from "@/lib/coffee/types";
 import { methodSpec, type BrewAnimation } from "@/lib/coffee/methods";
 import { VAR_META, varRanges, fmtVar, type TempUnit } from "./config";
 import { MethodArt, VarViz, type VizTheme } from "./visuals";
 
+/** The Brew-it ritual is a four-beat ceremony; `idle` is the live cup. */
+export type ReplayPhase = "idle" | "drain" | "pour" | "settle";
+
+/** Live fill level of the cup (fraction of cup height). */
+const LIVE_FILL = 0.9;
+
 export interface BrewStageProps {
   method: Method;
   theme: VizTheme;
-  /** Live pour colour (pre-brew preview). */
+  /** Live pour colour, used only as a fallback before the cup is known. */
   liquid: string;
-  brewing: boolean;
-  brewed: boolean;
-  /** The brewed cup (colour/crema/body). Overrides `liquid` once brewed. */
+  /** Current beat of the Brew-it replay (`idle` = the resting cup). */
+  phase: ReplayPhase;
+  /** Whether the cup is filled at rest. Empty until the first Brew. */
+  filled: boolean;
+  /** The live cup (colour/crema/body) from the Taste Mapper. */
   cup?: CupVisual;
   cupBody: string;
   cupRim: string;
-  brewMs?: number;
 }
 
-export function BrewStage({ method, theme, liquid, brewing, brewed, cup, cupBody, cupRim, brewMs = 2200 }: BrewStageProps) {
+export function BrewStage({ method, theme, liquid, phase, filled, cup, cupBody, cupRim }: BrewStageProps) {
+  const reduced = useReducedMotion();
   const anim: BrewAnimation = methodSpec(method).animation;
-  const fillColor = brewed && cup ? cup.color : liquid;
-  const target = brewing || brewed ? 0.9 : 0.12;
-  const crema = brewed && cup ? cup.crema : anim === "pull" ? 0.4 : 0;
+  const fillColor = cup ? cup.color : liquid;
+  const crema = cup ? cup.crema : anim === "pull" ? 0.4 : 0;
+
+  // Fill level by beat: empty until first brew; drains then the re-pour refills.
+  const fill = phase === "drain" || (phase === "idle" && !filled) ? 0 : LIVE_FILL;
+  const fillDur = phase === "drain" ? 0.42 : phase === "pour" ? 0.85 : 0.4;
+  const fillEase = phase === "drain" ? "easeIn" : "easeOut";
+
+  const pouring = phase === "pour";
+  const settling = phase === "settle";
+  // The surface line where crema/ripple/swirl sit, tracking the fill.
+  const surfaceBottom = `calc(${fill * 100}% - 6px)`;
 
   return (
     <div className="relative flex select-none flex-col items-center">
-      {/* the brewer; on a press it nudges down as if plunged */}
+      {/* the brewer; on a re-pour it tilts to pour (a press instead plunges down) */}
       <motion.div
-        animate={brewing && anim === "press" ? { y: [0, 6, 4] } : { y: 0 }}
-        transition={{ duration: brewMs / 1000, ease: "easeInOut" }}
+        animate={
+          pouring
+            ? anim === "press"
+              ? { y: [0, 6, 4], rotate: 0 }
+              : anim === "steep"
+                ? { y: 0, rotate: 0 }
+                : { rotate: [0, -16, -16, -4], y: 0 }
+            : { y: 0, rotate: 0 }
+        }
+        transition={{ duration: 0.85, ease: "easeInOut" }}
+        style={{ transformOrigin: "70% 80%" }}
       >
         <MethodArt method={method} theme={theme} hideVessel className="h-24 w-24" />
       </motion.div>
 
-      <DripLayer anim={anim} color={fillColor} brewing={brewing} />
+      <DripLayer anim={anim} color={fillColor} pouring={pouring} />
 
       <div className="relative -mt-1">
         <div className="relative h-40 w-44 overflow-hidden rounded-b-[5rem] rounded-t-2xl border-4" style={{ borderColor: cupRim, background: cupBody }}>
+          {/* steam rises near the end of the ritual (a brief wisp under reduced motion) */}
+          {settling && <Steam reduced={!!reduced} />}
+
           <motion.div
             className="absolute inset-x-0 bottom-0"
             style={{ background: fillColor }}
             initial={false}
-            animate={{ height: `${target * 100}%` }}
-            transition={{ duration: brewing ? brewMs / 1000 : 0.45, ease: "easeOut" }}
+            animate={{ height: `${fill * 100}%` }}
+            transition={{ duration: fillDur, ease: fillEase }}
           />
-          {/* crema / foam cap */}
-          {(brewing || brewed) && crema > 0 && (
+
+          {/* crema / foam cap (espresso) — rides the fill line */}
+          {crema > 0 && fill > 0 && (
             <motion.div
               className="absolute inset-x-2 rounded-full"
               style={{ background: "#C9A26A", height: `${6 + crema * 16}px` }}
               initial={false}
-              animate={{ bottom: `calc(${target * 100}% - ${3 + crema * 8}px)`, opacity: 0.85 }}
-              transition={{ duration: brewing ? brewMs / 1000 : 0.45, ease: "easeOut" }}
+              animate={{ bottom: `calc(${fill * 100}% - ${3 + crema * 8}px)`, opacity: 0.85 }}
+              transition={{ duration: fillDur, ease: fillEase }}
             />
           )}
-          {/* meniscus line */}
-          {(brewing || brewed) && crema === 0 && (
+          {/* meniscus line for filtered brews */}
+          {crema === 0 && fill > 0 && (
             <motion.div
               className="absolute inset-x-4 h-2 rounded-full opacity-50"
               style={{ background: "#F0D9B5" }}
               initial={false}
-              animate={{ bottom: `calc(${target * 100}% - 6px)` }}
-              transition={{ duration: brewing ? brewMs / 1000 : 0.45, ease: "easeOut" }}
+              animate={{ bottom: surfaceBottom }}
+              transition={{ duration: fillDur, ease: fillEase }}
+            />
+          )}
+
+          {/* bloom: an expanding ripple on the surface as it settles */}
+          {settling && !reduced && (
+            <motion.span
+              className="absolute left-1/2 size-6 -translate-x-1/2 rounded-full"
+              style={{ bottom: surfaceBottom, border: `2px solid ${cupBody}` }}
+              initial={{ scale: 0.3, opacity: 0.7 }}
+              animate={{ scale: 3.4, opacity: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            />
+          )}
+          {/* gentle swirl: a highlight drifts side to side as the surface settles */}
+          {settling && !reduced && (
+            <motion.span
+              className="absolute inset-x-6 h-3 rounded-[50%] opacity-40"
+              style={{ bottom: surfaceBottom, background: "radial-gradient(ellipse at center, #FFF6E2, transparent 70%)" }}
+              initial={{ x: -10 }}
+              animate={{ x: [-10, 12, -6, 0] }}
+              transition={{ duration: 0.85, ease: "easeInOut" }}
             />
           )}
         </div>
@@ -76,9 +130,33 @@ export function BrewStage({ method, theme, liquid, brewing, brewed, cup, cupBody
   );
 }
 
-/** The stuff falling between brewer and cup, varied by method. */
-function DripLayer({ anim, color, brewing }: { anim: BrewAnimation; color: string; brewing: boolean }) {
-  if (!brewing) return <div className="relative -mt-1 h-5 w-4" />;
+/** Rising steam wisps above the cup surface. Reduced motion → a single quick puff. */
+function Steam({ reduced }: { reduced: boolean }) {
+  const cols = reduced ? [16] : [10, 16, 22];
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex h-10 justify-center">
+      <svg viewBox="0 0 32 32" className="h-full w-16" aria-hidden>
+        {cols.map((x, i) => (
+          <motion.path
+            key={x}
+            d={`M${x} 30 q -3 -6 0 -12 q 3 -6 0 -12`}
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: reduced ? [0, 0.4, 0] : [0, 0.5, 0], y: -10 }}
+            transition={{ duration: reduced ? 0.6 : 1, delay: i * 0.12, ease: "easeOut" }}
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+/** The stuff falling between brewer and cup during the re-pour, varied by method. */
+function DripLayer({ anim, color, pouring }: { anim: BrewAnimation; color: string; pouring: boolean }) {
+  if (!pouring) return <div className="relative -mt-1 h-5 w-4" />;
 
   // Cold brew: no falling stream, it just steeps — show nothing here.
   if (anim === "steep") return <div className="relative -mt-1 h-5 w-4" />;

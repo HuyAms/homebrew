@@ -5,18 +5,16 @@
 import type { BrewVars, Method } from "./coffee/types";
 import { METHOD_SPECS, methodSpec } from "./coffee/methods";
 
-export type Mode = "forward" | "reverse";
 export type TempUnit = "C" | "F";
 
+// The result is live (derived from the recipe every render), so the persistent
+// state is just the recipe plus display prefs — no `mode` or `brewed` gate.
 export interface BrewSearch extends BrewVars {
   method: Method;
-  mode: Mode;
   /** Pro view (control chart) visible. */
   pro: boolean;
   /** Temperature unit for display. */
   unit: TempUnit;
-  /** Whether the current recipe has been brewed (reveals cup/taste/verdict). */
-  brewed: boolean;
 }
 
 const isMethod = (v: unknown): v is Method => typeof v === "string" && v in METHOD_SPECS;
@@ -52,11 +50,9 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     ratio: readVar(raw.ratio, method, "ratio"),
     time: readVar(raw.time, method, "time"),
     roast: readVar(raw.roast, method, "roast"),
-    mode: raw.mode === "reverse" ? "reverse" : "forward",
     // Pro view (control chart) is on by default; no longer user-toggled.
     pro: raw.pro === undefined ? true : bool(raw.pro),
     unit: raw.unit === "F" ? "F" : "C",
-    brewed: bool(raw.brewed),
   };
 }
 
