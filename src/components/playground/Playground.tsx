@@ -290,9 +290,18 @@ export default function Playground() {
           </div>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        {/* Mobile: a single flat column (the two desktop columns collapse via
+            `contents` so all blocks become siblings, reordered with `order`):
+            variables → tasting notes → chart → cup → featured. Desktop: two
+            independent-height columns (recipe sheet | live result). DOM order is
+            kept desktop/AT-meaningful; `order` only shifts the *visual* mobile
+            sequence (reset at lg). */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
           {/* ── Recipe sheet — controls ── */}
-          <section className="relative rounded-sm p-6 sm:p-9" style={{ background: "#F8F1E2", boxShadow: "0 1px 0 #fff inset, 0 14px 30px -18px rgba(67,53,42,.6)", border: "1px solid #E0D2B8" }}>
+          <section className="contents lg:relative lg:block lg:rounded-sm lg:p-9" style={{ background: "#F8F1E2", boxShadow: "0 1px 0 #fff inset, 0 14px 30px -18px rgba(67,53,42,.6)", border: "1px solid #E0D2B8" }}>
+            {/* ── Variables card (method + sliders + technique) — its own card on
+                mobile; on desktop it's a bare block inside the recipe-sheet card. */}
+            <div className="order-1 rounded-sm border border-[#E0D2B8] bg-[#F8F1E2] p-5 sm:p-6 lg:order-none lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0">
             <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Method</p>
             <div className="mb-7 flex flex-wrap gap-x-5 gap-y-2">
               {METHODS.map((m) => {
@@ -398,11 +407,14 @@ export default function Playground() {
                 </p>
               </div>
             )}
+            </div>
+            {/* ── end Variables card ── */}
 
             {/* Featured Recipes: curated, read-only starts from known brewers.
-                Loading one animates the Variables + re-brews the cup. */}
+                Loading one animates the Variables + re-brews the cup. Its own card
+                on mobile (sits last); a border-topped block on the desktop sheet. */}
             {!reverse && recipes.length > 0 && (
-              <div className="mt-7 border-t pt-5" style={{ borderColor: "#E8DCC6" }}>
+              <div className="order-5 rounded-sm border border-[#E0D2B8] bg-[#F8F1E2] p-5 sm:p-6 lg:order-none lg:mt-7 lg:rounded-none lg:border-x-0 lg:border-b-0 lg:border-t lg:border-[#E8DCC6] lg:bg-transparent lg:p-0 lg:pt-5">
                 <p className="text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Featured Recipes</p>
                 <p className="mt-1 mb-3 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#9A8870" }}>
                   Load a known brewer's start and watch the cup re-form. Beans drift as they age — re-dialing with each new bag is normal, not failure.
@@ -450,9 +462,9 @@ export default function Playground() {
           </section>
 
           {/* ── Result (live) ── */}
-          <aside className="flex flex-col gap-4">
+          <aside className="contents lg:flex lg:flex-col lg:gap-4">
             {/* Cup */}
-            <div className="rounded-sm p-6 text-center" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+            <div className={`${reverse ? "order-2" : "order-4"} rounded-sm p-6 text-center lg:order-none`} style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
               <p className="mb-4 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>{spec.label} · {reverse ? "The cup you made" : "The Cup"}</p>
               <div className="flex justify-center">
                 <BrewStage
@@ -514,7 +526,7 @@ export default function Playground() {
               />
             ) : (
               /* Forward: live Taste Profile + Verdict (Trust the tongue hides these in Reverse). */
-              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+              <div className="order-2 rounded-sm p-5 lg:order-none" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
                 <InfoTip title="Tasting Notes">
                   A live flavor readout on five <em>positive</em> attributes, each scored 0–100.
                   <span className="mt-2 block">
@@ -541,7 +553,7 @@ export default function Playground() {
 
             {/* Pro view: SCA control chart (live; hidden in Reverse — Trust the tongue) */}
             {proView && !reverse && (
-              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+              <div className="order-3 rounded-sm p-5 lg:order-none" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
                 <InfoTip title="Pro · Control Chart" className="mb-2">
                   The <strong>SCA Coffee Brewing Control Chart</strong> — the specialty-coffee
                   industry standard.
@@ -719,7 +731,7 @@ function ReverseFix({
   const whyId = useId();
   const altsId = useId();
   return (
-    <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+    <div className="order-3 rounded-sm p-5 lg:order-none" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
       <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>How did your cup taste?</p>
       <div className="flex flex-wrap gap-2">
         {complaints.map((c) => {
