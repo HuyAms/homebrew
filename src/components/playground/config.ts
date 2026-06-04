@@ -40,6 +40,13 @@ export function varRanges(method: Method): Record<keyof BrewVars, VarRange> {
   return methodSpec(method).ranges;
 }
 
+/** Display label for the time Variable — "Brew Time" when the brewer sets it,
+ *  the method's drawdown noun when it's grind-derived (ADR-0006). */
+export function timeLabel(method: Method): string {
+  if (methodSpec(method).timeMode !== "derived") return "Brew Time";
+  return method === "phin" ? "Drip Time" : "Drawdown";
+}
+
 export function defaultVars(method: Method): BrewVars {
   return { ...methodSpec(method).defaults };
 }

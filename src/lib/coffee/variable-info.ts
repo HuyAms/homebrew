@@ -56,6 +56,15 @@ export const VARIABLE_INFO: Record<keyof BrewVars, VariableInfo> = {
   },
 };
 
+/** Time when it's *derived* from grind, not set (gravity percolation — V60,
+ *  phin). The info tip explains the causality instead of slider directions, so
+ *  the user reads the readout as a consequence, not a frozen control. ADR-0006. */
+export const TIME_DERIVED_INFO: VariableInfo = {
+  what: "How long water is in contact with the bed. You don't set this directly — grind size controls how fast water flows through, so the drawdown time follows your grind.",
+  raise: "Grind coarser → water flows faster → shorter drawdown.",
+  lower: "Grind finer → water flows slower → longer drawdown.",
+};
+
 /** The reasoning behind a prescribed fix: the effect text for the direction the
  *  fix moves that Variable. `sign` is +1 to raise the value, −1 to lower it
  *  (matching the Coach's levers). This is what the Verdict's "Why?" reveals. */

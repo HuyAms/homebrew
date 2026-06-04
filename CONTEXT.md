@@ -49,7 +49,11 @@ Brew water temp. Higher → faster/higher extraction. SCA range ~90–96°C; too
 Coffee dose relative to water (e.g. 1:16). The lever that moves **Strength** (TDS) largely independently of Extraction. Filter ~1:15–1:18, espresso ~1:2.
 
 **Brew Time**:
-Total water–coffee contact time. Longer → higher extraction (diminishing past a point). Method-dependent (espresso ~25–30s, V60 ~2.5–3.5min, French press ~4min, cold brew hours).
+Total water–coffee contact time. Method-dependent (espresso ~25–30s, V60 ~2.5–3.5min, French press ~4min, cold brew hours). Whether it's a user-set **Variable** or a **derived read-out** depends on the method's brewing regime (see **Derived time** / ADR-0006). Where it *is* set (immersion), longer → higher extraction, diminishing past a plateau.
+
+**Derived time**:
+For **gravity-percolation** methods (V60, phin), brew time is a *consequence* of grind, not a free input: finer grind → more flow resistance → slower flow → longer drawdown. So time is **derived from grind** and shown as a read-only gauge (labelled _Drawdown_ / _Drip Time_) that tracks the Grind Size slider, not a draggable control — you change it by re-grinding. It also adds no independent Extraction Yield (grind already carries the slower-flow effect; crediting time too would double-count). **Immersion** methods (French press, AeroPress, cold brew) keep time a free **Variable** — the brewer genuinely chooses when to plunge/decant. **Espresso** keeps it a Variable as an explicit approximation: shot time follows grind only at fixed pressure, which is unmodelled, and a Featured Recipe (Soup Method) decouples time via low pressure. See ADR-0006.
+_Avoid_: locked, disabled, frozen (it's derived, not broken — it follows grind)
 
 **Roast Level**:
 Continuous light↔dark slider (rendered ~0–100, dark = higher). Darker → more soluble/porous → extracts faster, so the same other settings land further right on the chart. Calibrated from light/medium/dark anchor points in the research and interpolated.

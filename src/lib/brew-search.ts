@@ -3,7 +3,7 @@
 // Framework-agnostic: the router wires `validateBrewSearch` into the route's
 // `validateSearch`, and the Playground reads/writes this object.
 import type { BrewVars, Method } from "./coffee/types";
-import { METHOD_SPECS, methodSpec } from "./coffee/methods";
+import { METHOD_SPECS, methodSpec, deriveTime } from "./coffee/methods";
 import { isGrinderId, type GrinderId } from "./coffee/grinders";
 
 export type TempUnit = "C" | "F";
@@ -61,12 +61,18 @@ function readVar(raw: unknown, method: Method, key: keyof BrewVars): number {
  *  in-range object regardless of what's in the URL. */
 export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
   const method: Method = isMethod(raw.method) ? raw.method : "v60";
+  const grind = readVar(raw.grind, method, "grind");
   return {
     method,
-    grind: readVar(raw.grind, method, "grind"),
+    grind,
     waterTemp: readVar(raw.waterTemp, method, "waterTemp"),
     ratio: readVar(raw.ratio, method, "ratio"),
-    time: readVar(raw.time, method, "time"),
+    // Gravity-percolation methods derive time from grind (any URL `time` is
+    // ignored and re-derived, so stale/shared links stay consistent).
+    time:
+      methodSpec(method).timeMode === "derived"
+        ? deriveTime(method, grind)
+        : readVar(raw.time, method, "time"),
     roast: readVar(raw.roast, method, "roast"),
     // Forward (explore) by default; only an explicit `mode=reverse` opens Fix my cup.
     mode: raw.mode === "reverse" ? "reverse" : "forward",

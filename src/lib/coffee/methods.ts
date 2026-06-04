@@ -45,6 +45,13 @@ export interface MethodSpec {
   mechanism: string;
   filter: FilterType;
   timeScale: TimeScale;
+  /** Whether brew time is a free input the brewer sets, or a value *derived*
+   *  from grind. Immersion (French press, AeroPress, cold brew) and pressure
+   *  espresso (decoupled by pressure, which we don't model) keep it an `input`;
+   *  gravity percolation (V60, phin) makes it `derived` — finer grind → more
+   *  flow resistance → longer drawdown, so time follows grind and adds no
+   *  independent EY (grind already carries the slower-flow effect). See ADR-0006. */
+  timeMode: "input" | "derived";
   animation: BrewAnimation;
   defaults: BrewVars;
   ranges: Record<keyof BrewVars, VarRange>;
@@ -84,8 +91,12 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
     mechanism: "Pour-over · percolation",
     filter: "thin-paper",
     timeScale: "minutes",
+    timeMode: "derived",
     animation: "pour",
-    defaults: { grind: 42, waterTemp: 93, ratio: 16, time: 165, roast: 40 },
+    // time is the derived-drawdown anchor (timeEY=0, so it never moves the chart
+    // box): default grind 42 → 3:30, matching where real V60s actually drain and
+    // the sourced recipes' contact times. See ADR-0006.
+    defaults: { grind: 42, waterTemp: 93, ratio: 16, time: 210, roast: 40 },
     ranges: {
       grind: { min: 0, max: 100, step: 1 },
       waterTemp: { min: 85, max: 96, step: 1 },
@@ -110,6 +121,7 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
     mechanism: "Full immersion · metal mesh",
     filter: "metal-mesh",
     timeScale: "minutes",
+    timeMode: "input",
     animation: "press",
     defaults: { grind: 78, waterTemp: 94, ratio: 17, time: 240, roast: 45 },
     ranges: {
@@ -135,6 +147,9 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
     mechanism: "9-bar pressure · metal basket",
     filter: "metal-basket",
     timeScale: "seconds",
+    // Shot time follows grind only at fixed pressure; pressure is unmodeled and
+    // the Soup recipe decouples time via a low-pressure soak, so time stays an input.
+    timeMode: "input",
     animation: "pull",
     defaults: { grind: 8, waterTemp: 93, ratio: 2, time: 28, roast: 65 },
     ranges: {
@@ -166,6 +181,7 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
     mechanism: "Hybrid immersion + low pressure",
     filter: "paper-disc",
     timeScale: "seconds",
+    timeMode: "input",
     animation: "press",
     defaults: { grind: 32, waterTemp: 85, ratio: 15, time: 90, roast: 40 },
     ranges: {
@@ -191,6 +207,7 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
     mechanism: "Long cold immersion",
     filter: "cloth-bag",
     timeScale: "hours",
+    timeMode: "input",
     animation: "steep",
     // time in seconds: 16h. waterTemp is fridge/room (°C).
     defaults: { grind: 88, waterTemp: 20, ratio: 15, time: 57600, roast: 45 },
@@ -222,6 +239,7 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
     mechanism: "Slow metal drip · percolation",
     filter: "metal-mesh",
     timeScale: "minutes",
+    timeMode: "derived",
     animation: "drip",
     // Bold by design: low ratio → high strength. Robusta-leaning dark roast.
     defaults: { grind: 50, waterTemp: 93, ratio: 8, time: 300, roast: 70 },
@@ -257,4 +275,18 @@ export const METHOD_LIST: MethodSpec[] = [
 
 export function methodSpec(method: Method): MethodSpec {
   return METHOD_SPECS[method];
+}
+
+/** Gravity-percolation drawdown is a consequence of grind, not a free input:
+ *  finer grind → more flow resistance → longer contact. Maps the method's grind
+ *  position onto its time range, inverted (finer → longer; default grind →
+ *  default time). Only meaningful where `timeMode === "derived"`. See ADR-0006. */
+export function deriveTime(method: Method, grind: number): number {
+  const { defaults: d, ranges: r } = METHOD_SPECS[method];
+  const gSpan = grind >= d.grind ? r.grind.max - d.grind : d.grind - r.grind.min;
+  const gNorm = gSpan <= 0 ? 0 : (grind - d.grind) / gSpan; // coarse +, fine −
+  const tNorm = -gNorm; // finer grind → longer drawdown
+  const raw =
+    tNorm >= 0 ? d.time + tNorm * (r.time.max - d.time) : d.time + tNorm * (d.time - r.time.min);
+  return Math.round(raw / r.time.step) * r.time.step;
 }

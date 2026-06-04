@@ -46,11 +46,11 @@ import {
   type GrinderId,
 } from "@/lib/coffee/grinders";
 import { featuredRecipes, type FeaturedRecipe } from "@/lib/coffee/featured-recipes";
-import { VARIABLE_INFO } from "@/lib/coffee/variable-info";
-import { methodSpec } from "@/lib/coffee/methods";
+import { VARIABLE_INFO, TIME_DERIVED_INFO } from "@/lib/coffee/variable-info";
+import { methodSpec, deriveTime } from "@/lib/coffee/methods";
 import { defaultSearchVars, type BrewSearch, type Mode } from "@/lib/brew-search";
 import { createBrewSoundPlayer } from "@/lib/sound/player";
-import { METHODS, VAR_META, varRanges, fmtVar, fmtPuckPrep, ratioGrams } from "./config";
+import { METHODS, VAR_META, varRanges, fmtVar, fmtPuckPrep, ratioGrams, timeLabel } from "./config";
 import { PuckPrepViz, VarViz, type VizTheme } from "./visuals";
 import { BrewStage, VarStrip, type ReplayPhase } from "./brew-stage";
 import { ControlChart } from "./control-chart";
@@ -129,7 +129,12 @@ export default function Playground() {
     grind: search.grind,
     waterTemp: search.waterTemp,
     ratio: search.ratio,
-    time: search.time,
+    // Gravity-percolation methods (V60, phin): drawdown follows grind, not a
+    // slider — derive it so the read-out tracks grind live (ADR-0006).
+    time:
+      methodSpec(method).timeMode === "derived"
+        ? deriveTime(method, search.grind)
+        : search.time,
     roast: search.roast,
   };
 
@@ -332,6 +337,10 @@ export default function Playground() {
             <div className="divide-y" style={{ borderColor: "#E8DCC6" }}>
               {VAR_META.map((v) => {
                 const r = ranges[v.key];
+                // V60/phin: time is a grind-derived read-out, not a slider (ADR-0006).
+                const derivedTime = v.key === "time" && spec.timeMode === "derived";
+                const label = v.key === "time" ? timeLabel(method) : v.label;
+                const frac = (vars[v.key] - r.min) / (r.max - r.min || 1);
                 return (
                   <div key={v.key} className="py-4">
                     <div className="flex items-center gap-4">
@@ -341,24 +350,42 @@ export default function Playground() {
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex items-baseline justify-between">
                           <span className="flex items-center gap-1.5 text-lg" style={{ fontFamily: serif }}>
-                            <label>{v.label}</label>
-                            <VarInfoTip varKey={v.key} label={v.label} low={v.low} high={v.high} />
+                            <label>{label}</label>
+                            <VarInfoTip varKey={v.key} label={label} low={v.low} high={v.high} derived={derivedTime} />
                           </span>
-                          <span className="text-lg font-semibold tabular-nums" style={{ fontFamily: serif, color: "#A33A28" }}>
+                          <span
+                            id={derivedTime ? "brew-time-readout" : undefined}
+                            role={derivedTime ? "status" : undefined}
+                            className="text-lg font-semibold tabular-nums" style={{ fontFamily: serif, color: "#A33A28" }}>
                             {fmtVar(v.key, vars[v.key], { method, tempUnit })}
                           </span>
                         </div>
-                        <input
-                          type="range" min={r.min} max={r.max} step={r.step} value={vars[v.key]}
-                          onChange={(e) => setVar(v.key, Number(e.target.value))}
-                          aria-label={v.label}
-                          className="brew-slider w-full"
-                        />
-                        <div className="mt-1 flex justify-between text-[11px]" style={{ color: "#A3917A" }}>
-                          <span>{v.low}</span>
-                          {v.key === "ratio" && <span className="tabular-nums">{ratioGrams(method, vars.ratio)}</span>}
-                          <span>{v.high}</span>
-                        </div>
+                        {derivedTime ? (
+                          // A read-out, not a control: a non-interactive gauge that
+                          // tracks grind, so it never reads as a frozen slider.
+                          <>
+                            <div className="relative h-1.5 w-full rounded-full" style={{ background: "#E3D6BE" }} aria-hidden="true">
+                              <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${frac * 100}%`, background: "#C2A98B" }} />
+                              <div className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45" style={{ left: `${frac * 100}%`, background: "#A33A28" }} />
+                            </div>
+                            <div className="mt-1.5 text-[11px]" style={{ color: "#A3917A" }}>↳ Set by grind — finer = slower</div>
+                          </>
+                        ) : (
+                          <>
+                            <input
+                              type="range" min={r.min} max={r.max} step={r.step} value={vars[v.key]}
+                              onChange={(e) => setVar(v.key, Number(e.target.value))}
+                              aria-label={label}
+                              aria-describedby={v.key === "grind" && spec.timeMode === "derived" ? "brew-time-readout" : undefined}
+                              className="brew-slider w-full"
+                            />
+                            <div className="mt-1 flex justify-between text-[11px]" style={{ color: "#A3917A" }}>
+                              <span>{v.low}</span>
+                              {v.key === "ratio" && <span className="tabular-nums">{ratioGrams(method, vars.ratio)}</span>}
+                              <span>{v.high}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                     {/* Grind reference: the picked grinder's clicks (or everyday refs) + a grinder picker */}
@@ -426,7 +453,10 @@ export default function Playground() {
                     // underneath handles "Apply"; the info icon sits on top of it.
                     <div
                       key={r.id}
-                      className="relative rounded-md transition-all hover:-translate-y-0.5"
+                      // hover:-translate-y makes the card a stacking context, which
+                      // would trap the steps tooltip under the next card — lift the
+                      // hovered/focused card above its siblings so the tip stays on top.
+                      className="relative z-0 rounded-md transition-all hover:z-30 focus-within:z-30 hover:-translate-y-0.5"
                       style={{ fontFamily: serif, background: "#EFE6D2", border: "1px solid #E0D2B8", opacity: replaying ? 0.6 : 1 }}
                     >
                       <button
@@ -860,7 +890,7 @@ function InfoTip({
   inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [shift, setShift] = useState(0);
+  const [shift, setShift] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
   const closeTimer = useRef<number | undefined>(undefined);
@@ -872,9 +902,12 @@ function InfoTip({
     closeTimer.current = window.setTimeout(() => setOpen(false), 120);
   };
 
-  // Keep the popover inside the viewport: measure on open and shift it back in.
+  // Keep the popover inside the viewport: measure on open and shift it back in,
+  // both horizontally and vertically (a tall tip near the bottom edge — e.g. the
+  // recipe steps — would otherwise run off-screen; maxHeight + scroll catches any
+  // tip taller than the viewport itself).
   useLayoutEffect(() => {
-    if (!open) { setShift(0); return; }
+    if (!open) { setShift({ x: 0, y: 0 }); return; }
     const measure = () => {
       const el = tipRef.current;
       if (!el) return;
@@ -885,7 +918,11 @@ function InfoTip({
       const m = 8; // viewport margin
       const overRight = r.right - (window.innerWidth - m);
       const overLeft = m - r.left;
-      setShift((s) => s + (overRight > 0 ? -overRight : overLeft > 0 ? overLeft : 0));
+      const x = overRight > 0 ? -overRight : overLeft > 0 ? overLeft : 0;
+      // Lift up if it spills past the bottom, but never push its top off-screen.
+      const overBottom = r.bottom - (window.innerHeight - m);
+      const y = overBottom > 0 ? -Math.min(overBottom, r.top - m) : 0;
+      setShift({ x, y });
     };
     measure();
     window.addEventListener("resize", measure);
@@ -939,8 +976,10 @@ function InfoTip({
           role="tooltip"
           className="absolute left-0 top-full z-20 mt-1.5 block rounded-sm p-3 text-left text-[12px] normal-case tracking-normal"
           style={{
-            transform: shift ? `translateX(${shift}px)` : undefined,
+            transform: shift.x || shift.y ? `translate(${shift.x}px, ${shift.y}px)` : undefined,
             width: "min(20rem, calc(100vw - 1rem))",
+            maxHeight: "calc(100svh - 1rem)",
+            overflowY: "auto",
             background: "#FBF6EA",
             border: "1px solid #D8C9AC",
             boxShadow: "0 12px 28px -14px rgba(67,53,42,.6)",
@@ -959,7 +998,18 @@ function InfoTip({
 
 // Per-Variable info icon: what it is + what raising/lowering it does. Reads the
 // single variable-info content source shared with the Verdict's "Why?".
-function VarInfoTip({ varKey, label, low, high }: { varKey: keyof BrewVars; label: string; low: string; high: string }) {
+function VarInfoTip({ varKey, label, low, high, derived = false }: { varKey: keyof BrewVars; label: string; low: string; high: string; derived?: boolean }) {
+  // Derived time (V60/phin): explain the causality, not slider directions —
+  // there's no track to push, the value follows grind (ADR-0006).
+  if (derived) {
+    return (
+      <InfoTip inline title={label}>
+        <strong>{TIME_DERIVED_INFO.what}</strong>
+        <span className="mt-2 block">{TIME_DERIVED_INFO.lower}</span>
+        <span className="mt-1 block">{TIME_DERIVED_INFO.raise}</span>
+      </InfoTip>
+    );
+  }
   const info = VARIABLE_INFO[varKey];
   return (
     <InfoTip inline title={label}>

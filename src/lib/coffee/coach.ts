@@ -169,7 +169,12 @@ function prescribe(dir: Direction, method: Method, vars: BrewVars): CoachResult 
       why: "",
     };
   }
-  const levers = leversFor(dir);
+  // Drop the time lever where time is grind-derived (V60, phin): there's no time
+  // slider to set, so "Steep longer/shorter" would be an unappliable fix. Grind
+  // is always the primary EY lever anyway, so the prescription stays intact.
+  const levers = leversFor(dir).filter(
+    (l) => !(l.variable === "time" && methodSpec(method).timeMode === "derived"),
+  );
   const fixes = levers.map((l) => makeFix(l.variable, l.sign, method, vars));
   return {
     diagnosis: DIAGNOSIS[dir],

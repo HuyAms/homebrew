@@ -32,7 +32,12 @@ export function extract(input: BrewInput): ExtractionResult {
 
   const gEY = -ey.grindSwing * signedNorm(input.grind, d.grind, r.grind);
   const tEY = ey.tempSwing * signedNorm(input.waterTemp, d.waterTemp, r.waterTemp);
-  const timeEY = ey.timeSwing * diminish(signedNorm(input.time, d.time, r.time));
+  // Derived-time methods (gravity percolation): time follows grind, so it adds no
+  // *independent* EY — the slower-flow effect is already in gEY (else double-count).
+  const timeEY =
+    spec.timeMode === "derived"
+      ? 0
+      : ey.timeSwing * diminish(signedNorm(input.time, d.time, r.time));
   const roastEY = ey.roastSwing * signedNorm(input.roast, d.roast, r.roast);
   const ratioEY = ey.ratioSwing * signedNorm(input.ratio, d.ratio, r.ratio);
 
