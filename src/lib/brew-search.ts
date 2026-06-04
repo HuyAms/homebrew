@@ -4,6 +4,7 @@
 // `validateSearch`, and the Playground reads/writes this object.
 import type { BrewVars, Method } from "./coffee/types";
 import { METHOD_SPECS, methodSpec } from "./coffee/methods";
+import { isGrinderId, type GrinderId } from "./coffee/grinders";
 
 export type TempUnit = "C" | "F";
 
@@ -23,6 +24,9 @@ export interface BrewSearch extends BrewVars {
   unit: TempUnit;
   /** Brew-it sound muted. Default off; shareable + refresh-safe. */
   muted: boolean;
+  /** The user's grinder, so the Grind Size readout shows clicks in their model.
+   *  Default `generic` (everyday references). Persists across method switches. */
+  grinder: GrinderId;
 }
 
 const isMethod = (v: unknown): v is Method => typeof v === "string" && v in METHOD_SPECS;
@@ -65,6 +69,8 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     unit: raw.unit === "F" ? "F" : "C",
     // Sound on by default; only the explicit `muted=true` silences Brew it.
     muted: bool(raw.muted),
+    // No grinder picked by default → generic everyday references.
+    grinder: isGrinderId(raw.grinder) ? raw.grinder : "generic",
   };
 }
 

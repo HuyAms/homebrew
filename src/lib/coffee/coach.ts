@@ -16,6 +16,7 @@ import type {
   TasteComplaint,
 } from "./types";
 import { methodSpec, type VarRange } from "./methods";
+import { whyFix } from "./variable-info";
 
 export interface CoachInput extends ExtractionResult {
   method: Method;
@@ -110,6 +111,7 @@ function leversFor(dir: Exclude<Direction, "ok">): { variable: keyof BrewVars; s
   }
 }
 
+// The clinical read — shown in the Verdict section.
 const DIAGNOSIS: Record<Direction, string> = {
   "raise-ey": "Tastes sour — under-extracted",
   "lower-ey": "Tastes bitter — over-extracted",
@@ -118,22 +120,38 @@ const DIAGNOSIS: Record<Direction, string> = {
   ok: "Dialed in — sweet & balanced",
 };
 
+// A friend's casual take on the same cup — shown under the cup after a brew.
+// Warmer than the diagnosis, but still names the cause so the lesson lands.
+const COMMENT: Record<Direction, string> = {
+  "raise-ey": "Ooh, that's a sharp sip — comes off a little sour. Under-extracted.",
+  "lower-ey": "Mm, bites a bit bitter on the finish — pushed too far. Over-extracted.",
+  "raise-tds": "Hmm, kinda thin and watery, this one — it's brewing weak.",
+  "lower-tds": "Whoa — that's a punchy, heavy cup. Brewed a touch too strong.",
+  ok: "Oh, that's a lovely cup — sweet and nicely balanced. ☕",
+};
+
 function prescribe(dir: Direction, method: Method, vars: BrewVars): CoachResult {
   if (dir === "ok") {
     return {
       diagnosis: DIAGNOSIS.ok,
+      comment: COMMENT.ok,
       dialedIn: true,
       primaryFix: { variable: "ratio", instruction: "No change — enjoy it", setValue: vars.ratio },
       alternatives: [],
+      why: "",
     };
   }
   const levers = leversFor(dir);
   const fixes = levers.map((l) => makeFix(l.variable, l.sign, method, vars));
   return {
     diagnosis: DIAGNOSIS[dir],
+    comment: COMMENT[dir],
     dialedIn: false,
     primaryFix: fixes[0],
     alternatives: fixes.slice(1),
+    // The reasoning behind the primary fix, from the same content source as the
+    // per-Variable info icons (single source — issue #8).
+    why: whyFix(levers[0].variable, levers[0].sign),
   };
 }
 
