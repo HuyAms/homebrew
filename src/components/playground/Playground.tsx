@@ -39,6 +39,14 @@ import { coach, coachFromComplaint } from "@/lib/coffee/coach";
 import { cupFromComplaint } from "@/lib/coffee/cup-from-complaint";
 import { grindReference } from "@/lib/coffee/grind";
 import { DIALED, evennessFromPuckPrep, hasEvenness } from "@/lib/coffee/evenness";
+import {
+  GRINDER_OPTIONS,
+  grinderName,
+  grinderSetting,
+  type GrinderId,
+} from "@/lib/coffee/grinders";
+import { featuredRecipes, type FeaturedRecipe } from "@/lib/coffee/featured-recipes";
+import { VARIABLE_INFO } from "@/lib/coffee/variable-info";
 import { methodSpec } from "@/lib/coffee/methods";
 import { defaultSearchVars, type BrewSearch, type Mode } from "@/lib/brew-search";
 import { createBrewSoundPlayer } from "@/lib/sound/player";
@@ -114,7 +122,7 @@ export default function Playground() {
   // Search params are the single source of truth for the persistent recipe.
   const search = route.useSearch();
   const navigate = route.useNavigate();
-  const { method, mode, pro: proView, unit: tempUnit, muted, puckPrep } = search;
+  const { method, mode, pro: proView, unit: tempUnit, muted, puckPrep, grinder } = search;
   const reverse = mode === "reverse";
   const espresso = hasEvenness(method); // Puck Prep / channeling is espresso-only
   const vars: BrewVars = {
@@ -131,6 +139,8 @@ export default function Playground() {
   // The cup is empty until the first Brew; afterward it tracks the live recipe.
   const [hasBrewed, setHasBrewed] = useState(false);
   const [showAlts, setShowAlts] = useState(false);
+  // Verdict "Why?" expander (inline learning — the reasoning behind the fix).
+  const [showWhy, setShowWhy] = useState(false);
   // Reverse: the reported taste of "the cup you made" (transient, not persisted).
   const [complaint, setComplaint] = useState<TasteComplaint | null>(null);
   const timers = useRef<number[]>([]);
@@ -156,6 +166,14 @@ export default function Playground() {
   // cleared by Apply, the corrected recipe's cup); in Forward it's the live cup.
   const stageCup = madeCup ?? result.taste.cup;
 
+  // Featured Recipes for the current method (Forward only — curated, read-only).
+  const recipes = featuredRecipes(method);
+  // Grind Size readout: the picked grinder's clicks, else the generic references.
+  const gSetting = grinderSetting(grinder, vars.grind);
+  const grindReadout = gSetting
+    ? `${grinderName(grinder)} · ${gSetting}`
+    : grindReference(vars.grind).grinderRefs.join(" · ");
+
   // Merge a patch into the search params (replace: no back-stack spam;
   // resetScroll:false so dragging a slider doesn't jump the page to the top).
   const patch = (p: Partial<BrewSearch>) =>
@@ -174,6 +192,7 @@ export default function Playground() {
     setComplaint(null);
     setPhase("idle");
     setShowAlts(false);
+    setShowWhy(false);
     patch({ mode: m });
   };
 
@@ -205,8 +224,21 @@ export default function Playground() {
   const applyReverseFix = (fix: Fix) => {
     if (phase !== "idle") return;
     setShowAlts(false);
+    setShowWhy(false);
     setComplaint(null); // the fault is now resolved; the recipe is corrected
     patch(fixPatch(fix));
+    runRitual();
+  };
+
+  // Load a Featured Recipe (Forward only): animate all five Variables to the
+  // curated set and re-brew the cup with the same ritual as Apply. Read-only —
+  // the user loads but never saves recipes (ADR-0004).
+  const loadRecipe = (recipe: FeaturedRecipe) => {
+    if (phase !== "idle") return;
+    setShowAlts(false);
+    setShowWhy(false);
+    setHasBrewed(true);
+    patch({ ...recipe.vars });
     runRitual();
   };
 
@@ -294,7 +326,10 @@ export default function Playground() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex items-baseline justify-between">
-                          <label className="text-lg" style={{ fontFamily: serif }}>{v.label}</label>
+                          <span className="flex items-center gap-1.5 text-lg" style={{ fontFamily: serif }}>
+                            <label>{v.label}</label>
+                            <VarInfoTip varKey={v.key} label={v.label} low={v.low} high={v.high} />
+                          </span>
                           <span className="text-lg font-semibold tabular-nums" style={{ fontFamily: serif, color: "#A33A28" }}>
                             {fmtVar(v.key, vars[v.key], { method, tempUnit })}
                           </span>
@@ -312,11 +347,12 @@ export default function Playground() {
                         </div>
                       </div>
                     </div>
-                    {/* Grind reference: label + real-world references */}
+                    {/* Grind reference: the picked grinder's clicks (or everyday refs) + a grinder picker */}
                     {v.key === "grind" && (
-                      <p className="ml-15 mt-1 text-[11px]" style={{ color: "#9A8870" }}>
-                        ≈ {grindReference(vars.grind).grinderRefs.join(" · ")}
-                      </p>
+                      <div className="ml-15 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" style={{ color: "#9A8870" }}>
+                        <span>≈ {grindReadout}</span>
+                        <GrinderSelect value={grinder} onChange={(g) => patch({ grinder: g })} />
+                      </div>
                     )}
                   </div>
                 );
@@ -357,6 +393,40 @@ export default function Playground() {
                 </p>
               </div>
             )}
+
+            {/* Featured Recipes: curated, read-only starts from known brewers.
+                Loading one animates the Variables + re-brews the cup. */}
+            {!reverse && recipes.length > 0 && (
+              <div className="mt-7 border-t pt-5" style={{ borderColor: "#E8DCC6" }}>
+                <p className="text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Featured Recipes</p>
+                <p className="mt-1 mb-3 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#9A8870" }}>
+                  Load a known brewer's start and watch the cup re-form. Beans drift as they age — re-dialing with each new bag is normal, not failure.
+                </p>
+                <div className="flex flex-col gap-2.5">
+                  {recipes.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => loadRecipe(r)}
+                      disabled={replaying}
+                      className="w-full cursor-pointer rounded-md p-3 text-left transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ fontFamily: serif, background: "#EFE6D2", border: "1px solid #E0D2B8" }}
+                    >
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="text-base font-semibold" style={{ color: "#A33A28" }}>{r.title}</span>
+                        <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Load →</span>
+                      </span>
+                      <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: "#5A4A3A" }}>
+                        {r.brewer}
+                        <span className="font-normal" style={{ color: "#7A6A57" }}> — {r.brewerBio}</span>
+                      </span>
+                      <span className="mt-1 block text-[12px]" style={{ fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
+                        {r.note}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           {/* ── Result (live) ── */}
@@ -388,11 +458,14 @@ export default function Playground() {
                 )
               ) : (
                 <>
-                  {!hasBrewed && (
-                    <p className="mt-4 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>
-                      {replaying ? "Brewing…" : "Pencil in your recipe, then brew."}
-                    </p>
-                  )}
+                  {/* The placeholder spot replays as a friend's comment once brewed. */}
+                  <p className="mt-4 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>
+                    {replaying
+                      ? "Brewing…"
+                      : hasBrewed
+                        ? result.coach.comment
+                        : "Pencil in your recipe, then brew."}
+                  </p>
                   {/* Brew sits with the cup so its ritual is always in view */}
                   <div className="mt-5 flex justify-center">
                     <button onClick={onBrew} disabled={replaying}
@@ -414,6 +487,8 @@ export default function Playground() {
                 espresso={espresso}
                 showAlts={showAlts}
                 onToggleAlts={() => setShowAlts((s) => !s)}
+                showWhy={showWhy}
+                onToggleWhy={() => setShowWhy((s) => !s)}
                 onApply={applyReverseFix}
                 busy={replaying}
               />
@@ -428,7 +503,14 @@ export default function Playground() {
                   thing, driven mostly by roast — not the sour defect.
                 </InfoTip>
                 <TasteProfile taste={result.taste} />
-                <Verdict coach={result.coach} showAlts={showAlts} onToggleAlts={() => setShowAlts((s) => !s)} onApply={applyFix} />
+                <Verdict
+                  coach={result.coach}
+                  showAlts={showAlts}
+                  onToggleAlts={() => setShowAlts((s) => !s)}
+                  showWhy={showWhy}
+                  onToggleWhy={() => setShowWhy((s) => !s)}
+                  onApply={applyFix}
+                />
               </div>
             )}
 
@@ -464,7 +546,12 @@ export default function Playground() {
         .brew-slider::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:22px; height:22px; border-radius:999px; background:#FBF6EA; border:3px solid #A33A28; box-shadow:0 1px 4px rgba(67,53,42,.35); cursor:pointer; }
         .brew-slider::-moz-range-thumb { width:22px; height:22px; border-radius:999px; background:#FBF6EA; border:3px solid #A33A28; cursor:pointer; }
         .ml-15 { margin-left: 3.75rem; }
+        /* Tailwind v4 doesn't give buttons a pointer by default. */
+        button:not(:disabled) { cursor: pointer; }
         .brew-it:hover:not(:disabled) { background:#A33A28 !important; color:#F8F1E2 !important; box-shadow:0 6px 16px -6px rgba(163,58,40,.6); }
+        /* Base colours are inline styles, so hover must use !important to win. */
+        .disc-toggle:hover:not(:disabled) { background:#A33A28 !important; border-color:#A33A28 !important; color:#FBF6EA !important; transform:translateY(-1px); }
+        .disc-toggle:focus-visible { outline:2px solid #A33A28; outline-offset:2px; }
       `}</style>
     </div>
   );
@@ -507,13 +594,19 @@ function Verdict({
   coach,
   showAlts,
   onToggleAlts,
+  showWhy,
+  onToggleWhy,
   onApply,
 }: {
   coach: CoachResult;
   showAlts: boolean;
   onToggleAlts: () => void;
+  showWhy: boolean;
+  onToggleWhy: () => void;
   onApply: (fix: Fix) => void;
 }) {
+  const whyId = useId();
+  const altsId = useId();
   return (
     <div className="mt-4 border-t pt-3" style={{ borderColor: "#E0D2B8" }}>
       <p className="text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Verdict</p>
@@ -530,17 +623,29 @@ function Verdict({
               Apply
             </button>
           </div>
-          {coach.alternatives.length > 0 && (
-            <button onClick={onToggleAlts} className="mt-2 text-xs underline" style={{ color: "#9A8870" }}>
-              {showAlts ? "Hide alternatives" : "Or try…"}
-            </button>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {coach.why && (
+              <DisclosureToggle open={showWhy} onToggle={onToggleWhy} controls={whyId}>
+                Why this fix?
+              </DisclosureToggle>
+            )}
+            {coach.alternatives.length > 0 && (
+              <DisclosureToggle open={showAlts} onToggle={onToggleAlts} controls={altsId}>
+                Other options
+              </DisclosureToggle>
+            )}
+          </div>
+          {showWhy && coach.why && (
+            <p id={whyId} className="mt-2 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
+              {coach.why}
+            </p>
           )}
           {showAlts && (
-            <ul className="mt-2 space-y-1.5">
+            <ul id={altsId} className="mt-2 space-y-1.5">
               {coach.alternatives.map((alt) => (
                 <li key={fixKey(alt)} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                   <span>{alt.instruction}</span>
-                  <button onClick={() => onApply(alt)} className="shrink-0 text-xs underline" style={{ color: "#A33A28" }}>apply</button>
+                  <button onClick={() => onApply(alt)} className="shrink-0 rounded px-2 py-0.5 text-xs uppercase tracking-wide" style={{ fontFamily: serif, color: "#A33A28", border: "1px solid #D8B3A8", background: "rgba(163,58,40,.05)" }}>apply</button>
                 </li>
               ))}
             </ul>
@@ -562,6 +667,8 @@ function ReverseFix({
   espresso,
   showAlts,
   onToggleAlts,
+  showWhy,
+  onToggleWhy,
   onApply,
   busy,
 }: {
@@ -572,10 +679,14 @@ function ReverseFix({
   espresso: boolean;
   showAlts: boolean;
   onToggleAlts: () => void;
+  showWhy: boolean;
+  onToggleWhy: () => void;
   onApply: (fix: Fix) => void;
   busy: boolean;
 }) {
   const complaints = COMPLAINTS.filter((c) => espresso || !c.espressoOnly);
+  const whyId = useId();
+  const altsId = useId();
   return (
     <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
       <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>How did your cup taste?</p>
@@ -612,17 +723,29 @@ function ReverseFix({
                   Apply
                 </button>
               </div>
-              {fix.alternatives.length > 0 && (
-                <button onClick={onToggleAlts} className="mt-2 cursor-pointer text-xs underline" style={{ color: "#9A8870" }}>
-                  {showAlts ? "Hide alternatives" : "Or try…"}
-                </button>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                {fix.why && (
+                  <DisclosureToggle open={showWhy} onToggle={onToggleWhy} controls={whyId} disabled={busy}>
+                    Why this fix?
+                  </DisclosureToggle>
+                )}
+                {fix.alternatives.length > 0 && (
+                  <DisclosureToggle open={showAlts} onToggle={onToggleAlts} controls={altsId} disabled={busy}>
+                    Other options
+                  </DisclosureToggle>
+                )}
+              </div>
+              {showWhy && fix.why && (
+                <p id={whyId} className="mt-2 text-[12px]" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
+                  {fix.why}
+                </p>
               )}
               {showAlts && (
-                <ul className="mt-2 space-y-1.5">
+                <ul id={altsId} className="mt-2 space-y-1.5">
                   {fix.alternatives.map((alt) => (
                     <li key={fixKey(alt)} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                       <span>{alt.instruction}</span>
-                      <button onClick={() => onApply(alt)} disabled={busy} className="shrink-0 cursor-pointer text-xs underline disabled:opacity-60" style={{ color: "#A33A28" }}>apply</button>
+                      <button onClick={() => onApply(alt)} disabled={busy} className="shrink-0 cursor-pointer rounded px-2 py-0.5 text-xs uppercase tracking-wide disabled:opacity-60" style={{ fontFamily: serif, color: "#A33A28", border: "1px solid #D8B3A8", background: "rgba(163,58,40,.05)" }}>apply</button>
                     </li>
                   ))}
                 </ul>
@@ -681,7 +804,18 @@ function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void 
 // explanation. Opens on hover, keyboard focus, and tap; dismisses on Escape,
 // outside click, or blur. The panel is a DOM child of the wrapper so the pointer
 // can travel into it without closing (WCAG 1.4.13: hoverable + dismissible).
-function InfoTip({ title, children, className = "mb-3" }: { title: string; children: ReactNode; className?: string }) {
+function InfoTip({
+  title,
+  children,
+  className = "mb-3",
+  inline = false,
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+  /** Icon-only trigger (no heading text), for sitting beside a Variable label. */
+  inline?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
   const closeTimer = useRef<number | undefined>(undefined);
@@ -710,12 +844,16 @@ function InfoTip({ title, children, className = "mb-3" }: { title: string; child
   return (
     <span
       ref={wrapRef}
-      className={`relative flex w-fit items-center gap-1.5 text-xs uppercase tracking-widest ${className}`}
-      style={{ color: "#A3917A" }}
+      className={
+        inline
+          ? "relative inline-flex items-center"
+          : `relative flex w-fit items-center gap-1.5 text-xs uppercase tracking-widest ${className}`
+      }
+      style={inline ? undefined : { color: "#A3917A" }}
       onMouseEnter={() => { cancelClose(); setOpen(true); }}
       onMouseLeave={scheduleClose}
     >
-      {title}
+      {!inline && title}
       <button
         type="button"
         aria-label={`About ${title}`}
@@ -749,6 +887,76 @@ function InfoTip({ title, children, className = "mb-3" }: { title: string; child
         </span>
       )}
     </span>
+  );
+}
+
+// Per-Variable info icon: what it is + what raising/lowering it does. Reads the
+// single variable-info content source shared with the Verdict's "Why?".
+function VarInfoTip({ varKey, label, low, high }: { varKey: keyof BrewVars; label: string; low: string; high: string }) {
+  const info = VARIABLE_INFO[varKey];
+  return (
+    <InfoTip inline title={label}>
+      <strong>{info.what}</strong>
+      <span className="mt-2 block"><em>{high} →</em> {info.raise}</span>
+      <span className="mt-1 block"><em>← {low}</em> {info.lower}</span>
+    </InfoTip>
+  );
+}
+
+// Disclosure toggle: a clearly-tappable pill (border + rotating caret) that
+// shows/hides a related region. Custom-styled <button> with aria-expanded +
+// aria-controls so it reads as an expander to assistive tech (the controlled
+// region carries the matching id). Used for the Verdict's "Why?" + "Or try…".
+function DisclosureToggle({
+  open,
+  onToggle,
+  controls,
+  children,
+  disabled = false,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls: string;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-expanded={open}
+      aria-controls={controls}
+      className="disc-toggle inline-flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+      style={{
+        fontFamily: serif,
+        border: `1.5px solid ${open ? "#A33A28" : "#C9B795"}`,
+        color: open ? "#A33A28" : "#7A6A57",
+        background: open ? "rgba(163,58,40,.07)" : "#FBF6EA",
+      }}
+    >
+      {children}
+      <svg viewBox="0 0 12 12" className="size-2.5 transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : "none" }} aria-hidden>
+        <path d="M2.5 4.5L6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+// Grinder picker: maps the generic grind coarseness to the user's own clicks.
+function GrinderSelect({ value, onChange }: { value: GrinderId; onChange: (g: GrinderId) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as GrinderId)}
+      aria-label="Your grinder"
+      className="cursor-pointer rounded-full px-2 py-0.5 text-[11px]"
+      style={{ fontFamily: serif, color: "#7A6A57", background: "#FBF6EA", border: "1.5px solid #D8C9AC" }}
+    >
+      {GRINDER_OPTIONS.map((g) => (
+        <option key={g.id} value={g.id}>{g.name}</option>
+      ))}
+    </select>
   );
 }
 

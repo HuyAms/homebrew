@@ -17,16 +17,27 @@ interface Band {
   grinderRefs: string[];
 }
 
-// Ordered fine → coarse. Comandante click counts are the common dial-in refs.
+// Ordered fine → coarse. The everyday references are the generic fallback when
+// the user hasn't picked a grinder; grinder-specific clicks live in grinders.ts
+// (keyed by this same band order). Keep the two in sync.
 const BANDS: Band[] = [
-  { max: 12, label: "Extra-fine", grinderRefs: ["powdered sugar", "espresso", "Comandante ~8"] },
-  { max: 28, label: "Fine", grinderRefs: ["table salt", "Moka / AeroPress", "Comandante ~14"] },
-  { max: 45, label: "Medium-fine", grinderRefs: ["table sugar", "V60 / pour-over", "Comandante ~20"] },
-  { max: 60, label: "Medium", grinderRefs: ["sea salt", "drip / siphon", "Comandante ~25"] },
-  { max: 75, label: "Medium-coarse", grinderRefs: ["coarse sand", "Chemex", "Comandante ~30"] },
-  { max: 90, label: "Coarse", grinderRefs: ["raw sugar", "French press", "Comandante ~35"] },
-  { max: 101, label: "Extra-coarse", grinderRefs: ["sea-salt flakes", "cold brew", "Comandante ~40"] },
+  { max: 12, label: "Extra-fine", grinderRefs: ["powdered sugar", "espresso"] },
+  { max: 28, label: "Fine", grinderRefs: ["table salt", "Moka / AeroPress"] },
+  { max: 45, label: "Medium-fine", grinderRefs: ["table sugar", "V60 / pour-over"] },
+  { max: 60, label: "Medium", grinderRefs: ["sea salt", "drip / siphon"] },
+  { max: 75, label: "Medium-coarse", grinderRefs: ["coarse sand", "Chemex"] },
+  { max: 90, label: "Coarse", grinderRefs: ["raw sugar", "French press"] },
+  { max: 101, label: "Extra-coarse", grinderRefs: ["sea-salt flakes", "cold brew"] },
 ];
+
+/** Index into the coarseness bands (0 = extra-fine … 6 = extra-coarse). Shared
+ *  with grinders.ts so a grinder's per-band click settings line up with the
+ *  label/refs shown here. */
+export function grindBandIndex(value: number): number {
+  const v = clamp(value, 0, 100);
+  const i = BANDS.findIndex((b) => v < b.max);
+  return i === -1 ? BANDS.length - 1 : i;
+}
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 

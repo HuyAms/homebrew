@@ -109,14 +109,21 @@ export type Fix =
     };
 
 export interface CoachResult {
-  /** Plain-language read of the cup, e.g. "Tastes sour — under-extracted". */
+  /** Clinical read of the cup, e.g. "Tastes sour — under-extracted". Shown in
+   *  the Verdict section. */
   diagnosis: string;
+  /** A friend's casual take on the same cup, e.g. "Ooh, that's a sharp sip —
+   *  comes off a little sour. Under-extracted." Shown under the cup after a brew. */
+  comment: string;
   /** The single highest-leverage change (one variable at a time). */
   primaryFix: Fix;
   /** 2–3 alternative single-variable fixes, revealed on demand. */
   alternatives: Fix[];
   /** True when the brew already sits in the ideal box (no change needed). */
   dialedIn: boolean;
+  /** The reasoning behind the primary fix (the Verdict's "Why?"), sourced from
+   *  variable-info. Empty when dialed in. */
+  why: string;
 }
 
 /** Reverse-mode taste complaint. Most map 1:1 to a control-chart direction; one

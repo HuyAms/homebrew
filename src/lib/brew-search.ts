@@ -4,6 +4,7 @@
 // `validateSearch`, and the Playground reads/writes this object.
 import type { BrewVars, Method } from "./coffee/types";
 import { METHOD_SPECS, methodSpec } from "./coffee/methods";
+import { isGrinderId, type GrinderId } from "./coffee/grinders";
 
 export type TempUnit = "C" | "F";
 
@@ -26,6 +27,9 @@ export interface BrewSearch extends BrewVars {
   /** Puck Prep Technique, 0 sloppy → 1 dialed (espresso-only; ADR-0003). Only
    *  read for espresso; default dialed so existing brews stay clean/even. */
   puckPrep: number;
+  /** The user's grinder, so the Grind Size readout shows clicks in their model.
+   *  Default `generic` (everyday references). Persists across method switches. */
+  grinder: GrinderId;
 }
 
 /** Puck Prep is a 0–1 Technique slider; clamp + snap to a sensible step. */
@@ -73,6 +77,8 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     muted: bool(raw.muted),
     // Dialed by default → no channeling unless the user sloppies the prep.
     puckPrep: clamp(Math.round(num(raw.puckPrep, 1) / PUCK_PREP_STEP) * PUCK_PREP_STEP, 0, 1),
+    // No grinder picked by default → generic everyday references.
+    grinder: isGrinderId(raw.grinder) ? raw.grinder : "generic",
   };
 }
 

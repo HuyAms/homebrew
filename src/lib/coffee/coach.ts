@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { methodSpec, type VarRange } from "./methods";
 import { CHANNELING_THRESHOLD, DIALED, hasEvenness } from "./evenness";
+import { whyFix } from "./variable-info";
 
 export interface CoachInput extends ExtractionResult {
   method: Method;
@@ -81,7 +82,14 @@ function puckPrepFix(): Fix {
 /** Channeling prescription: the same single Puck Prep fix, with no Variable
  *  alternatives (the whole point is that no grind number fixes it). */
 function prescribeChanneling(diagnosis: string): CoachResult {
-  return { diagnosis, dialedIn: false, primaryFix: puckPrepFix(), alternatives: [] };
+  return {
+    diagnosis,
+    comment: "Whoa — sour and bitter at the same time? Water's channeling through the puck. Fix the prep, not the grind.",
+    dialedIn: false,
+    primaryFix: puckPrepFix(),
+    alternatives: [],
+    why: "Sour and bitter at once means water punched a fast channel through the bed — part of the puck over-extracts (bitter) while the bypassed rest barely extracts (sour). No grind number evens that out; redistribute the grounds and tamp level (WDT + a level tamp).",
+  };
 }
 
 function instruction(variable: keyof BrewVars, dir: 1 | -1, method: Method, setValue: number): string {
@@ -131,6 +139,7 @@ function leversFor(dir: Exclude<Direction, "ok">): { variable: keyof BrewVars; s
   }
 }
 
+// The clinical read — shown in the Verdict section.
 const DIAGNOSIS: Record<Direction, string> = {
   "raise-ey": "Tastes sour — under-extracted",
   "lower-ey": "Tastes bitter — over-extracted",
@@ -139,22 +148,38 @@ const DIAGNOSIS: Record<Direction, string> = {
   ok: "Dialed in — sweet & balanced",
 };
 
+// A friend's casual take on the same cup — shown under the cup after a brew.
+// Warmer than the diagnosis, but still names the cause so the lesson lands.
+const COMMENT: Record<Direction, string> = {
+  "raise-ey": "Ooh, that's a sharp sip — comes off a little sour. Under-extracted.",
+  "lower-ey": "Mm, bites a bit bitter on the finish — pushed too far. Over-extracted.",
+  "raise-tds": "Hmm, kinda thin and watery, this one — it's brewing weak.",
+  "lower-tds": "Whoa — that's a punchy, heavy cup. Brewed a touch too strong.",
+  ok: "Oh, that's a lovely cup — sweet and nicely balanced. ☕",
+};
+
 function prescribe(dir: Direction, method: Method, vars: BrewVars): CoachResult {
   if (dir === "ok") {
     return {
       diagnosis: DIAGNOSIS.ok,
+      comment: COMMENT.ok,
       dialedIn: true,
       primaryFix: { kind: "variable", variable: "ratio", instruction: "No change — enjoy it", setValue: vars.ratio },
       alternatives: [],
+      why: "",
     };
   }
   const levers = leversFor(dir);
   const fixes = levers.map((l) => makeFix(l.variable, l.sign, method, vars));
   return {
     diagnosis: DIAGNOSIS[dir],
+    comment: COMMENT[dir],
     dialedIn: false,
     primaryFix: fixes[0],
     alternatives: fixes.slice(1),
+    // The reasoning behind the primary fix, from the same content source as the
+    // per-Variable info icons (single source — issue #8).
+    why: whyFix(levers[0].variable, levers[0].sign),
   };
 }
 
