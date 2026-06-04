@@ -1,3 +1,7 @@
+## Git
+
+Working directly on `main` is fine for this project — no need to create a branch before committing.
+
 ## Agent skills
 
 ### Issue tracker
