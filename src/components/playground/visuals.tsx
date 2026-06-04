@@ -139,17 +139,16 @@ export function MethodArt({ method, theme, className, hideVessel = false }: { me
   const inner = (() => {
     switch (method) {
       case "v60":
+        // Conical pour-over dripper: wide rim narrowing down, fanned spiral
+        // ridges, a side handle loop and a stand line below.
         return (
           <>
-            <path d="M16 34 L30 14 L50 14 L64 34 Z" {...common} />
-            <path d="M40 14 L40 34" {...common} opacity={0.4} />
-            <path d="M28 21 L52 21" {...common} opacity={0.4} />
-            {!hideVessel && (
-              <>
-                <line x1="40" y1="34" x2="40" y2="44" {...common} />
-                <path d="M26 50 L54 50 L50 66 L30 66 Z" {...common} />
-              </>
-            )}
+            <path d="M15 18 L65 18 L46 54 L34 54 Z" {...common} />
+            <path d="M40 54 Q30 36 24 20" {...common} opacity={0.45} />
+            <path d="M40 54 L38 20" {...common} opacity={0.45} />
+            <path d="M40 54 Q49 36 56 20" {...common} opacity={0.45} />
+            <path d="M64 21 Q79 34 59 49" {...common} />
+            <line x1="24" y1="62" x2="56" y2="62" {...common} />
           </>
         );
       case "french-press":
@@ -163,14 +162,16 @@ export function MethodArt({ method, theme, className, hideVessel = false }: { me
           </>
         );
       case "espresso":
+        // Portafilter: round basket viewed at a slight angle, twin spouts below,
+        // and the long handle off to the side. (Previously read as a lollipop.)
         return (
           <>
-            <ellipse cx="34" cy="24" rx="16" ry="6" {...common} />
-            <path d="M18 24 L20 34 L48 34 L50 24" {...common} />
-            <path d="M50 27 L66 30" {...common} />
-            <rect x="64" y="27" width="6" height="6" rx="1.5" {...common} />
-            <path d="M30 34 L30 50 M40 34 L40 50" {...common} opacity={0.6} />
-            {!hideVessel && <path d="M22 56 L46 56 L42 68 L26 68 Z" {...common} />}
+            <ellipse cx="38" cy="20" rx="16" ry="5" {...common} />
+            <path d="M22 20 L25 38 L51 38 L54 20" {...common} />
+            <path d="M54 27 L70 30" {...common} strokeWidth={3.5} />
+            <rect x="67" y="26" width="8" height="8" rx="2.5" {...common} />
+            <path d="M32 38 L32 46 M44 38 L44 46" {...common} opacity={0.7} />
+            {!hideVessel && <path d="M26 56 L50 56 L46 70 L30 70 Z" {...common} />}
           </>
         );
       case "aeropress":
