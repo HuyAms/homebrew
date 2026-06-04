@@ -30,8 +30,11 @@ export function mapTaste(input: TasteMapperInput): TasteResult {
   const under = Math.max(0, IDEAL_EY - ey); // %below ideal → sour
   const over = Math.max(0, ey - IDEAL_EY); // %above ideal → bitter
 
-  // Sourness rises as we under-extract; light roast tilts brighter.
-  const sourness = pct(under * 13 + (0.5 - roastT) * 22);
+  // Acidity is a positive cup attribute, not the sour defect. It's driven mostly
+  // by roast (light = bright, dark = flat), then modulated by extraction: acids
+  // dissolve first, so under-extraction reads sharp/bright, while over-extraction
+  // mutes perceived acidity as bitterness masks it. Never 0 except very dark.
+  const acidity = pct((1 - roastT) * 65 + 15 + under * 6 - over * 4.5);
   // Bitterness rises as we over-extract; dark roast adds roasty bitterness.
   const bitterness = pct(over * 13 + roastT * 28);
   // Sweetness peaks in the ideal zone and falls off either side.
@@ -48,7 +51,7 @@ export function mapTaste(input: TasteMapperInput): TasteResult {
   const balance = pct(100 - eyMiss * 45 - tdsMiss * 25);
 
   return {
-    taste: { sourness, sweetness, bitterness, body, balance },
+    taste: { acidity, sweetness, bitterness, body, balance },
     cup: {
       color: cupColor(roastT, strengthT, ey),
       crema: round2(crema(spec.crema, ey)),

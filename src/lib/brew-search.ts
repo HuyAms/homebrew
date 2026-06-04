@@ -15,6 +15,8 @@ export interface BrewSearch extends BrewVars {
   pro: boolean;
   /** Temperature unit for display. */
   unit: TempUnit;
+  /** Brew-it sound muted. Default off; shareable + refresh-safe. */
+  muted: boolean;
 }
 
 const isMethod = (v: unknown): v is Method => typeof v === "string" && v in METHOD_SPECS;
@@ -53,6 +55,8 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     // Pro view (control chart) is on by default; no longer user-toggled.
     pro: raw.pro === undefined ? true : bool(raw.pro),
     unit: raw.unit === "F" ? "F" : "C",
+    // Sound on by default; only the explicit `muted=true` silences Brew it.
+    muted: bool(raw.muted),
   };
 }
 

@@ -78,6 +78,12 @@ A drawn cup whose color/darkness, crema, and body visibly change with the brew. 
 **Brew**:
 A button whose meaning depends on mode. In **Forward mode** it is a **flourish**: it replays the method-specific brewing animation (pour/drip/press/pull/steep) for delight, but changes no data — the cup/taste/verdict are already live. In **Reverse mode** there is no Brew — the cup was already made in real life; the action there is **Apply** (write the prescribed fix into the recipe).
 
+**Brew sound**:
+A method-appropriate audio clip the **Brew** press plays as part of the flourish (pour-gurgle, espresso whir, press plunge, phin drip, cold-brew pour). An explicit user gesture, so autoplay policies are satisfied; never fires on slider drags. Clips lazy-load on first Brew. Silenced by **Mute**, and independent of `prefers-reduced-motion`.
+
+**Mute**:
+A masthead toggle (beside °C/°F) that silences the **Brew sound**. Off by default; persists via the `muted` search param, so it is shareable and refresh-safe.
+
 **Apply**:
 The Reverse-mode action: writes a prescribed **Fix** into the current recipe (the Variable's `setValue`), correcting "the cup you made" toward the ideal.
 

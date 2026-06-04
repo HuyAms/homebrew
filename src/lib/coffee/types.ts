@@ -39,7 +39,7 @@ export interface ExtractionResult {
 
 /** Five-axis human-readable flavor readout (each ~0–100). */
 export interface TasteProfile {
-  sourness: number;
+  acidity: number;
   sweetness: number;
   bitterness: number;
   body: number;

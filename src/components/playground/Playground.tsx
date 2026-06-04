@@ -13,7 +13,7 @@
 // result. Recipe state lives in TanStack Router search params (the single
 // source of truth), so every recipe is shareable and refresh-safe.
 import { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { getRouteApi } from "@tanstack/react-router";
 import type {
   BrewVars,
@@ -28,12 +28,17 @@ import { coach } from "@/lib/coffee/coach";
 import { grindReference } from "@/lib/coffee/grind";
 import { methodSpec } from "@/lib/coffee/methods";
 import { defaultSearchVars, type BrewSearch } from "@/lib/brew-search";
+import { createBrewSoundPlayer } from "@/lib/sound/player";
 import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
 import { VarViz, type VizTheme } from "./visuals";
 import { BrewStage, VarStrip, type ReplayPhase } from "./brew-stage";
 import { ControlChart } from "./control-chart";
 
 const route = getRouteApi("/");
+
+// One player for the app: caches lazily-loaded clips across re-brews. Audio is
+// only built/fetched on the first Brew, never at module load.
+const brewSound = createBrewSoundPlayer();
 
 const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
 const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
@@ -62,7 +67,7 @@ export default function Playground() {
   // Search params are the single source of truth for the persistent recipe.
   const search = route.useSearch();
   const navigate = route.useNavigate();
-  const { method, pro: proView, unit: tempUnit } = search;
+  const { method, pro: proView, unit: tempUnit, muted } = search;
   const vars: BrewVars = {
     grind: search.grind,
     waterTemp: search.waterTemp,
@@ -107,6 +112,9 @@ export default function Playground() {
     setShowAlts(false);
     setHasBrewed(true);
     clearTimers();
+    // The Brew press is an explicit gesture: play the method's clip (silent when
+    // muted), independent of reduced motion. Sound never fires on slider drags.
+    brewSound.play(method, { muted });
     if (reduced) {
       // Trim the ceremony: a brief steam wisp, no drain/re-pour/bloom.
       setPhase("settle");
@@ -143,6 +151,7 @@ export default function Playground() {
               value={tempUnit}
               onChange={(v) => patch({ unit: v as "C" | "F" })}
             />
+            <MuteToggle muted={muted} onToggle={() => patch({ muted: !muted })} />
           </div>
         </header>
 
@@ -293,7 +302,7 @@ function previewColor(vars: BrewVars): string {
 
 // ── five-axis taste profile ──────────────────────────────────────────────────
 const AXES: { key: keyof TasteResult["taste"]; label: string }[] = [
-  { key: "sourness", label: "Acidity" },
+  { key: "acidity", label: "Acidity" },
   { key: "sweetness", label: "Sweetness" },
   { key: "bitterness", label: "Bitterness" },
   { key: "body", label: "Body" },
@@ -362,6 +371,47 @@ function Verdict({
         </>
       )}
     </div>
+  );
+}
+
+// ── mute toggle ───────────────────────────────────────────────────────────────
+// A hand-drawn speaker that sits beside the °C/°F toggle. Unmuted: two sound
+// waves gently pulse outward (the input is drawn + animated). Muted: the waves
+// give way to a struck-through slash.
+function MuteToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+  const color = muted ? "#A3917A" : "#A33A28";
+  return (
+    <button
+      onClick={onToggle}
+      aria-pressed={muted}
+      aria-label={muted ? "Unmute Brew it sound" : "Mute Brew it sound"}
+      title={muted ? "Sound off" : "Sound on"}
+      className="flex size-8 cursor-pointer items-center justify-center rounded-full transition-colors"
+      style={{ border: "1.5px solid #D8C9AC" }}
+    >
+      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {/* speaker cone */}
+        <path d="M4 9.5v5h3l4 3.5V6L7 9.5H4z" fill={color} fillOpacity={0.12} />
+        {muted ? (
+          // struck-through: a slash where the waves were
+          <motion.path d="M15 9l5 6M20 9l-5 6" initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2 }} style={{ transformOrigin: "17px 12px" }} />
+        ) : (
+          // sound waves pulsing outward
+          [
+            { d: "M15 9.5a3.5 3.5 0 010 5", delay: 0 },
+            { d: "M17.5 7a7 7 0 010 10", delay: 0.25 },
+          ].map((w) => (
+            <motion.path
+              key={w.d}
+              d={w.d}
+              initial={{ opacity: 0.35 }}
+              animate={{ opacity: [0.35, 1, 0.35] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut", delay: w.delay }}
+            />
+          ))
+        )}
+      </svg>
+    </button>
   );
 }
 
