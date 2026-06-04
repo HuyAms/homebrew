@@ -103,12 +103,16 @@ function TimeViz({ value, theme, min, max }: { value: number; theme: VizTheme; m
 // Roast: a coffee bean that darkens (and gains an oily sheen) with roast level.
 function RoastViz({ value, theme }: { value: number; theme: VizTheme }) {
   const t = value / 100;
-  const color = mix("#C79A63", "#241309", t);
+  // Dark end stops at a deep oily espresso brown, not black, so the bean still
+  // reads as a bean. The crease crossfades dark→light so it stays visible across
+  // the whole range (a dark line on a light bean, a sheen-lit line on a dark one).
+  const color = mix("#C79A63", "#3B2316", t);
   return (
     <svg viewBox="0 0 32 32" className="size-full">
       <rect x="1" y="1" width="30" height="30" rx="7" fill={theme.bed} />
       <ellipse cx="16" cy="16" rx="9" ry="11" fill={color} stroke={theme.stroke} strokeWidth="1" transform="rotate(18 16 16)" />
-      <path d="M16 6 Q13 16 16 26" fill="none" stroke="#0003" strokeWidth="1.4" transform="rotate(18 16 16)" />
+      <path d="M16 6 Q13 16 16 26" fill="none" stroke="#2A1608" strokeWidth="1.4" opacity={0.3 * (1 - t)} transform="rotate(18 16 16)" />
+      <path d="M16 6 Q13 16 16 26" fill="none" stroke="#F3E4CB" strokeWidth="1.2" opacity={0.5 * t} transform="rotate(18 16 16)" />
       <ellipse cx="13" cy="11" rx="2.4" ry="3.6" fill="#fff" opacity={0.12 + t * 0.32} transform="rotate(18 16 16)" />
     </svg>
   );

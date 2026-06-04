@@ -409,25 +409,40 @@ export default function Playground() {
                 </p>
                 <div className="flex flex-col gap-2.5">
                   {recipes.map((r) => (
-                    <button
+                    // Card is a wrapper, not a <button>, so the steps InfoTip (which is
+                    // itself a button) isn't nested in a button. A full-card button layer
+                    // underneath handles "Apply"; the info icon sits on top of it.
+                    <div
                       key={r.id}
-                      onClick={() => loadRecipe(r)}
-                      disabled={replaying}
-                      className="w-full cursor-pointer rounded-md p-3 text-left transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                      style={{ fontFamily: serif, background: "#EFE6D2", border: "1px solid #E0D2B8" }}
+                      className="relative rounded-md transition-all hover:-translate-y-0.5"
+                      style={{ fontFamily: serif, background: "#EFE6D2", border: "1px solid #E0D2B8", opacity: replaying ? 0.6 : 1 }}
                     >
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="text-base font-semibold" style={{ color: "#A33A28" }}>{r.title}</span>
-                        <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Apply →</span>
-                      </span>
-                      <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: "#5A4A3A" }}>
-                        {r.brewer}
-                        <span className="font-normal" style={{ color: "#7A6A57" }}> — {r.brewerBio}</span>
-                      </span>
-                      <span className="mt-1 block text-[12px]" style={{ fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
-                        {r.note}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => loadRecipe(r)}
+                        disabled={replaying}
+                        aria-label={`Apply ${r.title} recipe`}
+                        className="absolute inset-0 cursor-pointer rounded-md disabled:cursor-not-allowed"
+                      />
+                      <div className="pointer-events-none relative p-3 text-left">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-base font-semibold" style={{ color: "#A33A28" }}>{r.title}</span>
+                            <span className="pointer-events-auto">
+                              <RecipeStepsTip recipe={r} />
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Apply →</span>
+                        </span>
+                        <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: "#5A4A3A" }}>
+                          {r.brewer}
+                          <span className="font-normal" style={{ color: "#7A6A57" }}> — {r.brewerBio}</span>
+                        </span>
+                        <span className="mt-1 block text-[12px]" style={{ fontStyle: "italic", color: "#7A6A57", lineHeight: 1.5 }}>
+                          {r.note}
+                        </span>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -502,10 +517,15 @@ export default function Playground() {
               <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
                 <InfoTip title="Tasting Notes">
                   A live flavor readout on five <em>positive</em> attributes, each scored 0–100.
-                  They're derived from where your brew lands relative to the ideal extraction zone:
-                  under-extraction reads sharp &amp; sour, over-extraction tips bitter, and the sweet
-                  spot peaks Sweetness &amp; Balance. <em>Acidity</em> here means brightness — a good
-                  thing, driven mostly by roast — not the sour defect.
+                  <span className="mt-2 block">
+                    They're derived from where your brew lands relative to the ideal extraction zone:
+                    under-extraction reads sharp &amp; sour, over-extraction tips bitter, and the sweet
+                    spot peaks Sweetness &amp; Balance.
+                  </span>
+                  <span className="mt-2 block">
+                    <em>Acidity</em> here means brightness — a good thing, driven mostly by roast — not
+                    the sour defect.
+                  </span>
                 </InfoTip>
                 <TasteProfile taste={result.taste} />
                 <Verdict
@@ -524,10 +544,16 @@ export default function Playground() {
               <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
                 <InfoTip title="Pro · Control Chart" className="mb-2">
                   The <strong>SCA Coffee Brewing Control Chart</strong> — the specialty-coffee
-                  industry standard. It plots <strong>Strength</strong> (TDS %, vertical) against
-                  <strong> Extraction</strong> (EY %, horizontal). Your brew is the dot; the dashed
-                  box is the ideal target (EY ≈ 18–22%, TDS ≈ 1.15–1.45%). Left of the box =
-                  under-extracted (sour), right = over-extracted (bitter); low = weak, high = strong.
+                  industry standard.
+                  <span className="mt-2 block">
+                    It plots <strong>Strength</strong> (TDS %, vertical) against
+                    <strong> Extraction</strong> (EY %, horizontal). Your brew is the dot; the dashed
+                    box is the ideal target (EY ≈ 18–22%, TDS ≈ 1.15–1.45%).
+                  </span>
+                  <span className="mt-2 block">
+                    Left of the box = under-extracted (sour), right = over-extracted (bitter);
+                    low = weak, high = strong.
+                  </span>
                 </InfoTip>
                 <ControlChart
                   result={result.extraction}
@@ -928,6 +954,22 @@ function VarInfoTip({ varKey, label, low, high }: { varKey: keyof BrewVars; labe
       <strong>{info.what}</strong>
       <span className="mt-2 block"><em>{high} →</em> {info.raise}</span>
       <span className="mt-1 block"><em>← {low}</em> {info.lower}</span>
+    </InfoTip>
+  );
+}
+
+// Per-recipe info icon: the brewer's actual step-by-step method, so a newcomer
+// can make the cup, not just load its Variables. Steps live in featured-recipes.ts.
+function RecipeStepsTip({ recipe }: { recipe: FeaturedRecipe }) {
+  return (
+    <InfoTip inline title={`How to make ${recipe.title}`}>
+      <strong className="block">How to make · {recipe.title}</strong>
+      {recipe.steps.map((step, i) => (
+        <span key={i} className="mt-1.5 flex gap-1.5">
+          <span className="shrink-0 font-semibold" style={{ color: "#A33A28" }}>{i + 1}.</span>
+          <span>{step}</span>
+        </span>
+      ))}
     </InfoTip>
   );
 }
