@@ -1,14 +1,21 @@
-// The Homebrew Playground — single responsive screen, single-mode Explore.
+// The Homebrew Playground — single responsive screen with two modes.
 // Design: "Field Notes" — an editorial brew-journal on warm ruled paper. Left
 // recipe sheet (method tabs + five Variable sliders), right the cup with its
 // Brew button (kept together so the ritual is always in view), tasting-note
 // slips and the verdict. A Pro view reveals the SCA control chart.
 // Side-by-side on desktop, stacked on mobile.
 //
-// The result is LIVE: dragging any Variable instantly updates the Cup, Taste
-// Profile, Verdict, and Pro chart — there is no brew gate. Brew it is a pure
-// flourish: it replays the method-specific brewing ritual (drain → tilt-pour
-// refill → bloom + swirl → steam), changes no data, and is re-triggerable.
+// FORWARD (explore): the result is LIVE — dragging any Variable instantly
+// updates the Cup, Taste Profile, Verdict, and Pro chart, no brew gate. Brew it
+// is a pure flourish: it replays the method-specific brewing ritual (drain →
+// tilt-pour refill → bloom + swirl → steam), changes no data, re-triggerable.
+//
+// REVERSE (Fix my cup): the user confirms the recipe they brewed in real life
+// and picks how it tasted; the Cup renders "the cup you made" biased by that
+// reported taste (cup-from-complaint), and the Coach prescribes the single
+// highest-leverage fix. Apply writes the fix into the recipe and morphs the bad
+// cup into the corrected one. Trust the tongue: the simulated Taste Profile,
+// Verdict, and Pro chart are hidden in Reverse; there is no Brew (ADR-0002).
 //
 // The Extraction Engine, Taste Mapper and Coach (src/lib/coffee/) drive the
 // result. Recipe state lives in TanStack Router search params (the single
@@ -21,14 +28,16 @@ import type {
   CoachResult,
   ExtractionResult,
   Method,
+  TasteComplaint,
   TasteResult,
 } from "@/lib/coffee/types";
 import { extractFrom } from "@/lib/coffee/extraction-engine";
 import { mapTaste } from "@/lib/coffee/taste-mapper";
-import { coach } from "@/lib/coffee/coach";
+import { coach, coachFromComplaint } from "@/lib/coffee/coach";
+import { cupFromComplaint } from "@/lib/coffee/cup-from-complaint";
 import { grindReference } from "@/lib/coffee/grind";
 import { methodSpec } from "@/lib/coffee/methods";
-import { defaultSearchVars, type BrewSearch } from "@/lib/brew-search";
+import { defaultSearchVars, type BrewSearch, type Mode } from "@/lib/brew-search";
 import { createBrewSoundPlayer } from "@/lib/sound/player";
 import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
 import { VarViz, type VizTheme } from "./visuals";
@@ -64,11 +73,22 @@ function runBrew(method: Method, vars: BrewVars): BrewResult {
   return { extraction, taste, coach: coachResult };
 }
 
+// Reverse-mode taste complaints, in the order they're offered. Each maps 1:1 to
+// a control-chart direction inside the Coach (coachFromComplaint).
+const COMPLAINTS: { id: TasteComplaint; label: string; note: string }[] = [
+  { id: "sour", label: "Sour", note: "sharp, under-extracted" },
+  { id: "bitter", label: "Bitter", note: "harsh, over-extracted" },
+  { id: "weak", label: "Weak / watery", note: "thin, low strength" },
+  { id: "too-strong", label: "Too strong", note: "intense, high strength" },
+  { id: "just-right", label: "Just right", note: "in the sweet spot" },
+];
+
 export default function Playground() {
   // Search params are the single source of truth for the persistent recipe.
   const search = route.useSearch();
   const navigate = route.useNavigate();
-  const { method, pro: proView, unit: tempUnit, muted } = search;
+  const { method, mode, pro: proView, unit: tempUnit, muted } = search;
+  const reverse = mode === "reverse";
   const vars: BrewVars = {
     grind: search.grind,
     waterTemp: search.waterTemp,
@@ -83,6 +103,8 @@ export default function Playground() {
   // The cup is empty until the first Brew; afterward it tracks the live recipe.
   const [hasBrewed, setHasBrewed] = useState(false);
   const [showAlts, setShowAlts] = useState(false);
+  // Reverse: the reported taste of "the cup you made" (transient, not persisted).
+  const [complaint, setComplaint] = useState<TasteComplaint | null>(null);
   const timers = useRef<number[]>([]);
 
   const clearTimers = () => {
@@ -97,27 +119,42 @@ export default function Playground() {
   // The result is derived live from the current recipe every render — no gate.
   const result = runBrew(method, vars);
 
+  // Reverse: prescribe a fix from the reported taste; render "the cup you made"
+  // biased toward that fault (Trust the tongue — the simulation is not shown).
+  const reverseFix: CoachResult | null =
+    reverse && complaint ? coachFromComplaint(complaint, method, vars) : null;
+  const madeCup = reverse && complaint ? cupFromComplaint(complaint, method, vars) : null;
+  // The cup on stage: in Reverse it's the cup you made (or, once a complaint is
+  // cleared by Apply, the corrected recipe's cup); in Forward it's the live cup.
+  const stageCup = madeCup ?? result.taste.cup;
+
   // Merge a patch into the search params (replace: no back-stack spam;
   // resetScroll:false so dragging a slider doesn't jump the page to the top).
   const patch = (p: Partial<BrewSearch>) =>
     navigate({ search: (prev) => ({ ...prev, ...p }), replace: true, resetScroll: false });
 
   const setVar = (k: keyof BrewVars, v: number) => patch({ [k]: v } as Partial<BrewSearch>);
-  const selectMethod = (m: Method) => patch({ method: m, ...defaultSearchVars(m) });
-  const applyFix = (variable: keyof BrewVars, value: number) =>
-    patch({ [variable]: value } as Partial<BrewSearch>);
+  const selectMethod = (m: Method) => {
+    setComplaint(null);
+    patch({ method: m, ...defaultSearchVars(m) });
+  };
 
-  // Brew it: replay the ritual. Changes no data; re-triggerable once idle.
-  const onBrew = () => {
-    if (phase !== "idle") return;
-    setShowAlts(false);
-    setHasBrewed(true);
+  const switchMode = (m: Mode) => {
+    if (m === mode) return;
     clearTimers();
-    // The Brew press is an explicit gesture: play the method's clip (silent when
-    // muted), independent of reduced motion. Sound never fires on slider drags.
+    setComplaint(null);
+    setPhase("idle");
+    setShowAlts(false);
+    patch({ mode: m });
+  };
+
+  // The Brew-it ritual: method sound + drain → re-pour → settle (a steam wisp
+  // only under reduced motion). Shared by Forward's Brew and Reverse's Apply, so
+  // applying a fix re-brews the cup with the same delight.
+  const runRitual = () => {
+    clearTimers();
     brewSound.play(method, { muted });
     if (reduced) {
-      // Trim the ceremony: a brief steam wisp, no drain/re-pour/bloom.
       setPhase("settle");
       timers.current.push(window.setTimeout(() => setPhase("idle"), REDUCED_MS));
       return;
@@ -126,6 +163,31 @@ export default function Playground() {
     timers.current.push(window.setTimeout(() => setPhase("pour"), DRAIN_MS));
     timers.current.push(window.setTimeout(() => setPhase("settle"), DRAIN_MS + POUR_MS));
     timers.current.push(window.setTimeout(() => setPhase("idle"), DRAIN_MS + POUR_MS + SETTLE_MS));
+  };
+
+  // Forward Apply: write the fix into the live recipe (the cup follows live).
+  const applyFix = (variable: keyof BrewVars, value: number) =>
+    patch({ [variable]: value } as Partial<BrewSearch>);
+
+  // Reverse Apply: write the fix, clear the resolved complaint, then re-brew —
+  // the bad cup drains and the corrected cup pours back in, with sound, exactly
+  // like Brew it. (Trust the tongue: the resolved complaint is cleared.)
+  const applyReverseFix = (variable: keyof BrewVars, value: number) => {
+    if (phase !== "idle") return;
+    setShowAlts(false);
+    setComplaint(null); // the fault is now resolved; the recipe is corrected
+    patch({ [variable]: value } as Partial<BrewSearch>);
+    runRitual();
+  };
+
+  // Brew it: replay the ritual. Changes no data; re-triggerable once idle. The
+  // press is an explicit gesture, so sound plays (silent when muted) independent
+  // of reduced motion; sound never fires on slider drags.
+  const onBrew = () => {
+    if (phase !== "idle") return;
+    setShowAlts(false);
+    setHasBrewed(true);
+    runRitual();
   };
   const replaying = phase !== "idle";
 
@@ -143,10 +205,15 @@ export default function Playground() {
           <div>
             <p className="text-xs uppercase tracking-[0.3em]" style={{ color: "#A3917A" }}>Homebrew · Brew Journal</p>
             <h1 className="text-2xl sm:text-3xl" style={{ fontFamily: serif, fontWeight: 600 }}>
-              Explore your cup
+              {reverse ? "Fix my cup" : "Explore your cup"}
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Segmented
+              options={[{ v: "forward", l: "Explore" }, { v: "reverse", l: "Fix my cup" }]}
+              value={mode}
+              onChange={(v) => switchMode(v as Mode)}
+            />
             <Segmented
               options={[{ v: "C", l: "°C" }, { v: "F", l: "°F" }]}
               value={tempUnit}
@@ -178,6 +245,12 @@ export default function Playground() {
               })}
             </div>
             <p className="mb-5 -mt-3 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#9A8870" }}>{spec.mechanism}</p>
+
+            {reverse && (
+              <p className="mb-5 -mt-2 rounded-sm px-3 py-2 text-sm" style={{ fontFamily: serif, color: "#7A6A57", background: "#EFE6D2", border: "1px solid #E0D2B8" }}>
+                Confirm the recipe you brewed, then tell us how it tasted →
+              </p>
+            )}
 
             {/* Variable sliders */}
             <div className="divide-y" style={{ borderColor: "#E8DCC6" }}>
@@ -225,15 +298,15 @@ export default function Playground() {
           <aside className="flex flex-col gap-4">
             {/* Cup */}
             <div className="rounded-sm p-6 text-center" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-              <p className="mb-4 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>{spec.label} · The Cup</p>
+              <p className="mb-4 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>{spec.label} · {reverse ? "The cup you made" : "The Cup"}</p>
               <div className="flex justify-center">
                 <BrewStage
                   method={method}
                   theme={theme}
                   liquid={previewColor(vars)}
-                  cup={result.taste.cup}
+                  cup={reverse ? stageCup : result.taste.cup}
                   phase={phase}
-                  filled={hasBrewed}
+                  filled={reverse ? true : hasBrewed}
                   cupBody="#FFFDF7"
                   cupRim="#6F5D49"
                 />
@@ -241,36 +314,59 @@ export default function Playground() {
               <div className="mt-5">
                 <VarStrip vars={vars} method={method} theme={theme} tempUnit={tempUnit} tone={{ chipBg: "#EFE6D2", value: "#A33A28" }} />
               </div>
-              {!hasBrewed && (
-                <p className="mt-4 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>
-                  {replaying ? "Brewing…" : "Pencil in your recipe, then brew."}
-                </p>
+              {reverse ? (
+                !complaint && phase === "idle" && (
+                  <p className="mt-4 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>
+                    Pick how it tasted below to see the cup you made.
+                  </p>
+                )
+              ) : (
+                <>
+                  {!hasBrewed && (
+                    <p className="mt-4 text-sm" style={{ fontFamily: serif, fontStyle: "italic", color: "#7A6A57" }}>
+                      {replaying ? "Brewing…" : "Pencil in your recipe, then brew."}
+                    </p>
+                  )}
+                  {/* Brew sits with the cup so its ritual is always in view */}
+                  <div className="mt-5 flex justify-center">
+                    <button onClick={onBrew} disabled={replaying}
+                      className="brew-it rotate-[-3deg] cursor-pointer rounded-md px-10 py-3 text-xl uppercase tracking-[0.15em] transition-all hover:rotate-0 hover:-translate-y-0.5 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ fontFamily: serif, fontWeight: 700, color: "#A33A28", border: "3px double #A33A28", background: "rgba(163,58,40,.05)" }}>
+                      {replaying ? "Brewing…" : "Brew it"}
+                    </button>
+                  </div>
+                </>
               )}
-              {/* Brew sits with the cup so its ritual is always in view */}
-              <div className="mt-5 flex justify-center">
-                <button onClick={onBrew} disabled={replaying}
-                  className="brew-it rotate-[-3deg] cursor-pointer rounded-md px-10 py-3 text-xl uppercase tracking-[0.15em] transition-all hover:rotate-0 hover:-translate-y-0.5 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ fontFamily: serif, fontWeight: 700, color: "#A33A28", border: "3px double #A33A28", background: "rgba(163,58,40,.05)" }}>
-                  {replaying ? "Brewing…" : "Brew it"}
-                </button>
+            </div>
+
+            {reverse ? (
+              /* Reverse: report taste → single prescribed fix → Apply (morph). */
+              <ReverseFix
+                complaint={complaint}
+                onPick={setComplaint}
+                fix={reverseFix}
+                showAlts={showAlts}
+                onToggleAlts={() => setShowAlts((s) => !s)}
+                onApply={applyReverseFix}
+                busy={replaying}
+              />
+            ) : (
+              /* Forward: live Taste Profile + Verdict (Trust the tongue hides these in Reverse). */
+              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+                <InfoTip title="Tasting Notes">
+                  A live flavor readout on five <em>positive</em> attributes, each scored 0–100.
+                  They're derived from where your brew lands relative to the ideal extraction zone:
+                  under-extraction reads sharp &amp; sour, over-extraction tips bitter, and the sweet
+                  spot peaks Sweetness &amp; Balance. <em>Acidity</em> here means brightness — a good
+                  thing, driven mostly by roast — not the sour defect.
+                </InfoTip>
+                <TasteProfile taste={result.taste} />
+                <Verdict coach={result.coach} showAlts={showAlts} onToggleAlts={() => setShowAlts((s) => !s)} onApply={applyFix} />
               </div>
-            </div>
+            )}
 
-            {/* Taste profile + verdict (live) */}
-            <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-              <InfoTip title="Tasting Notes">
-                A live flavor readout on five <em>positive</em> attributes, each scored 0–100.
-                They're derived from where your brew lands relative to the ideal extraction zone:
-                under-extraction reads sharp &amp; sour, over-extraction tips bitter, and the sweet
-                spot peaks Sweetness &amp; Balance. <em>Acidity</em> here means brightness — a good
-                thing, driven mostly by roast — not the sour defect.
-              </InfoTip>
-              <TasteProfile taste={result.taste} />
-              <Verdict coach={result.coach} showAlts={showAlts} onToggleAlts={() => setShowAlts((s) => !s)} onApply={applyFix} />
-            </div>
-
-            {/* Pro view: SCA control chart (live) */}
-            {proView && (
+            {/* Pro view: SCA control chart (live; hidden in Reverse — Trust the tongue) */}
+            {proView && !reverse && (
               <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
                 <InfoTip title="Pro · Control Chart" className="mb-2">
                   The <strong>SCA Coffee Brewing Control Chart</strong> — the specialty-coffee
@@ -382,6 +478,86 @@ function Verdict({
             </ul>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ── reverse mode: report taste → single fix → Apply ───────────────────────────
+// The user picks how the cup they brewed tasted (the complaint leads); the Coach
+// prescribes the single highest-leverage fix and Apply morphs the cup. The
+// simulated Taste Profile/Verdict are absent here — only the reported taste.
+function ReverseFix({
+  complaint,
+  onPick,
+  fix,
+  showAlts,
+  onToggleAlts,
+  onApply,
+  busy,
+}: {
+  complaint: TasteComplaint | null;
+  onPick: (c: TasteComplaint) => void;
+  fix: CoachResult | null;
+  showAlts: boolean;
+  onToggleAlts: () => void;
+  onApply: (variable: keyof BrewVars, value: number) => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+      <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>How did your cup taste?</p>
+      <div className="flex flex-wrap gap-2">
+        {COMPLAINTS.map((c) => {
+          const active = complaint === c.id;
+          return (
+            <button key={c.id} onClick={() => onPick(c.id)} aria-pressed={active} title={c.note}
+              className="cursor-pointer rounded-full px-3 py-1.5 text-sm transition-all"
+              style={{
+                fontFamily: serif,
+                color: active ? "#F8F1E2" : "#7A6A57",
+                background: active ? "#A33A28" : "transparent",
+                border: `1.5px solid ${active ? "#A33A28" : "#D8C9AC"}`,
+              }}>
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {fix && (
+        <div className="mt-4 rounded-sm p-4" style={{ background: "#EFE6D2", border: "1px solid #E0D2B8" }}>
+          {fix.dialedIn ? (
+            <p className="text-lg" style={{ fontFamily: serif, color: "#A33A28" }}>Keep this recipe — it's dialed in. ☕</p>
+          ) : (
+            <>
+              <p className="text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>The one fix</p>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <p className="text-lg" style={{ fontFamily: serif, fontWeight: 600 }}>{fix.primaryFix.instruction}</p>
+                <button onClick={() => onApply(fix.primaryFix.variable, fix.primaryFix.setValue)} disabled={busy}
+                  className="shrink-0 cursor-pointer rounded-md px-4 py-1.5 text-sm uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2", background: "#A33A28" }}>
+                  Apply
+                </button>
+              </div>
+              {fix.alternatives.length > 0 && (
+                <button onClick={onToggleAlts} className="mt-2 cursor-pointer text-xs underline" style={{ color: "#9A8870" }}>
+                  {showAlts ? "Hide alternatives" : "Or try…"}
+                </button>
+              )}
+              {showAlts && (
+                <ul className="mt-2 space-y-1.5">
+                  {fix.alternatives.map((alt) => (
+                    <li key={alt.variable} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
+                      <span>{alt.instruction}</span>
+                      <button onClick={() => onApply(alt.variable, alt.setValue)} disabled={busy} className="shrink-0 cursor-pointer text-xs underline disabled:opacity-60" style={{ color: "#A33A28" }}>apply</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

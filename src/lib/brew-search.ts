@@ -7,10 +7,16 @@ import { METHOD_SPECS, methodSpec } from "./coffee/methods";
 
 export type TempUnit = "C" | "F";
 
-// The result is live (derived from the recipe every render), so the persistent
-// state is just the recipe plus display prefs — no `mode` or `brewed` gate.
+/** Forward = explore (live); Reverse = Fix my cup (report → fix → Apply). */
+export type Mode = "forward" | "reverse";
+
+// Forward's result is live (derived from the recipe every render); the only
+// gate-like state is `mode` (which flow the user is in). Complaint selection is
+// transient UI state, not persisted here.
 export interface BrewSearch extends BrewVars {
   method: Method;
+  /** Which flow: Forward (explore) or Reverse (Fix my cup). Default forward. */
+  mode: Mode;
   /** Pro view (control chart) visible. */
   pro: boolean;
   /** Temperature unit for display. */
@@ -52,6 +58,8 @@ export function validateBrewSearch(raw: Record<string, unknown>): BrewSearch {
     ratio: readVar(raw.ratio, method, "ratio"),
     time: readVar(raw.time, method, "time"),
     roast: readVar(raw.roast, method, "roast"),
+    // Forward (explore) by default; only an explicit `mode=reverse` opens Fix my cup.
+    mode: raw.mode === "reverse" ? "reverse" : "forward",
     // Pro view (control chart) is on by default; no longer user-toggled.
     pro: raw.pro === undefined ? true : bool(raw.pro),
     unit: raw.unit === "F" ? "F" : "C",
