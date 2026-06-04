@@ -413,7 +413,7 @@ export default function Playground() {
                     >
                       <span className="flex items-baseline justify-between gap-2">
                         <span className="text-base font-semibold" style={{ color: "#A33A28" }}>{r.title}</span>
-                        <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Load →</span>
+                        <span className="shrink-0 text-[11px] uppercase tracking-wide" style={{ color: "#A3917A" }}>Apply →</span>
                       </span>
                       <span className="mt-0.5 block text-[12px] font-semibold" style={{ color: "#5A4A3A" }}>
                         {r.brewer}
@@ -618,8 +618,8 @@ function Verdict({
           <div className="mt-1 flex items-center justify-between gap-3">
             <p className="text-lg" style={{ fontFamily: serif, fontWeight: 600 }}>{coach.primaryFix.instruction}</p>
             <button onClick={() => onApply(coach.primaryFix)}
-              className="shrink-0 rounded-md px-4 py-1.5 text-sm uppercase tracking-wide"
-              style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2", background: "#A33A28" }}>
+              className="shrink-0 cursor-pointer rounded-md bg-[#A33A28] px-4 py-1.5 text-sm uppercase tracking-wide transition-[background-color,box-shadow,transform] hover:-translate-y-px hover:bg-[#8F3324] hover:shadow-md active:translate-y-0"
+              style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2" }}>
               Apply
             </button>
           </div>
@@ -645,7 +645,7 @@ function Verdict({
               {coach.alternatives.map((alt) => (
                 <li key={fixKey(alt)} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                   <span>{alt.instruction}</span>
-                  <button onClick={() => onApply(alt)} className="shrink-0 rounded px-2 py-0.5 text-xs uppercase tracking-wide" style={{ fontFamily: serif, color: "#A33A28", border: "1px solid #D8B3A8", background: "rgba(163,58,40,.05)" }}>apply</button>
+                  <button onClick={() => onApply(alt)} className="shrink-0 cursor-pointer rounded border border-[#D8B3A8] bg-[rgba(163,58,40,0.05)] px-2 py-0.5 text-xs uppercase tracking-wide transition-colors hover:border-[#C2897A] hover:bg-[rgba(163,58,40,0.13)]" style={{ fontFamily: serif, color: "#A33A28" }}>apply</button>
                 </li>
               ))}
             </ul>
@@ -718,8 +718,8 @@ function ReverseFix({
               <div className="mt-1 flex items-center justify-between gap-3">
                 <p className="text-lg" style={{ fontFamily: serif, fontWeight: 600 }}>{fix.primaryFix.instruction}</p>
                 <button onClick={() => onApply(fix.primaryFix)} disabled={busy}
-                  className="shrink-0 cursor-pointer rounded-md px-4 py-1.5 text-sm uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2", background: "#A33A28" }}>
+                  className="shrink-0 cursor-pointer rounded-md bg-[#A33A28] px-4 py-1.5 text-sm uppercase tracking-wide transition-[background-color,box-shadow,transform] hover:-translate-y-px hover:bg-[#8F3324] hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-[#A33A28] disabled:opacity-60 disabled:shadow-none"
+                  style={{ fontFamily: serif, fontWeight: 700, color: "#F8F1E2" }}>
                   Apply
                 </button>
               </div>
@@ -745,7 +745,7 @@ function ReverseFix({
                   {fix.alternatives.map((alt) => (
                     <li key={fixKey(alt)} className="flex items-center justify-between gap-3 text-sm" style={{ fontFamily: serif }}>
                       <span>{alt.instruction}</span>
-                      <button onClick={() => onApply(alt)} disabled={busy} className="shrink-0 cursor-pointer rounded px-2 py-0.5 text-xs uppercase tracking-wide disabled:opacity-60" style={{ fontFamily: serif, color: "#A33A28", border: "1px solid #D8B3A8", background: "rgba(163,58,40,.05)" }}>apply</button>
+                      <button onClick={() => onApply(alt)} disabled={busy} className="shrink-0 cursor-pointer rounded border border-[#D8B3A8] bg-[rgba(163,58,40,0.05)] px-2 py-0.5 text-xs uppercase tracking-wide transition-colors hover:border-[#C2897A] hover:bg-[rgba(163,58,40,0.13)] disabled:opacity-60" style={{ fontFamily: serif, color: "#A33A28" }}>apply</button>
                     </li>
                   ))}
                 </ul>

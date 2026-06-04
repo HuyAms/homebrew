@@ -66,6 +66,17 @@ export interface MethodSpec {
 const FILTER_DOMAIN = { eyMin: 14, eyMax: 26, tdsMin: 0.8, tdsMax: 1.8 };
 const FILTER_IDEAL = { eyMin: 18, eyMax: 22, tdsMin: 1.15, tdsMax: 1.45 };
 
+// ── CALIBRATION CONTRACT (read before editing `ey` / `chart` / Variable ranges)
+// The `ey` swings and per-method `chart` boxes below are tuned so that BOTH:
+//   (1) each method's default recipe lands mid-box, and
+//   (2) every shipped Featured Recipe (featured-recipes.ts) lands INSIDE its box.
+// These are sourced champion recipes — if one reads "over/under-extracted" on the
+// chart, the calibration is wrong, not the recipe (see ADR-0005, and research/).
+// Design notes baked into the numbers: grind is the dominant EY lever; temp/time
+// are gentle (immersion extraction plateaus); strength boxes are method-specific
+// because TDS = EY/ratio, so each method's intended ratio sets its strength band.
+// If you change any `ey`, `chart`, Variable `ranges`, or a recipe, RE-VERIFY by
+// running every recipe through extractFrom() and checking it sits in `chart.ideal`.
 export const METHOD_SPECS: Record<Method, MethodSpec> = {
   v60: {
     id: "v60",
@@ -83,7 +94,11 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
       roast: { min: 0, max: 100, step: 1 },
     },
     doseGrams: 15,
-    ey: { baseEY: 20, grindSwing: 5, tempSwing: 3, timeSwing: 4, roastSwing: 2.5, ratioSwing: 1 },
+    // Grind is the dominant EY lever; temp (over a ~6°C window) and time (with
+    // diminishing returns) are secondary, so their swings are gentle — otherwise
+    // a hot, long, well-dialed recipe (Hoffmann's Ultimate V60) overshoots the
+    // 18–22 box. Calibrated so sourced champion recipes land in-box. See ADR-0005.
+    ey: { baseEY: 20, grindSwing: 5, tempSwing: 1, timeSwing: 1.5, roastSwing: 2, ratioSwing: 0.8 },
     tdsK: 1.0,
     filterBody: 0.15,
     crema: 0,
@@ -105,8 +120,10 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
       roast: { min: 0, max: 100, step: 1 },
     },
     doseGrams: 30,
-    // Immersion: grind acts via surface area only (gentler), time matters more.
-    ey: { baseEY: 20, grindSwing: 4, tempSwing: 2.5, timeSwing: 5, roastSwing: 2.5, ratioSwing: 1 },
+    // Immersion extraction plateaus after the first few minutes (Barista Hustle):
+    // a long steep is mostly settling, not more extraction, so timeSwing is small.
+    // Otherwise Hoffmann's ~9–12 min press reads wildly over-extracted. See ADR-0005.
+    ey: { baseEY: 20, grindSwing: 4, tempSwing: 1, timeSwing: 0.8, roastSwing: 2, ratioSwing: 0.8 },
     tdsK: 1.05,
     filterBody: 0.55,
     crema: 0,
@@ -124,17 +141,23 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
       grind: { min: 0, max: 30, step: 1 },
       waterTemp: { min: 88, max: 96, step: 1 },
       ratio: { min: 1.5, max: 3, step: 0.5 },
-      time: { min: 18, max: 40, step: 1 },
+      // Up to 60s so long, low-pressure lever shots (Hedrick's 1:3 "soup") fit
+      // instead of being pinned to the floor and read as under-extracted.
+      time: { min: 18, max: 60, step: 1 },
       roast: { min: 0, max: 100, step: 1 },
     },
     doseGrams: 18,
-    ey: { baseEY: 20, grindSwing: 6, tempSwing: 2, timeSwing: 4, roastSwing: 2, ratioSwing: 1.5 },
+    ey: { baseEY: 20, grindSwing: 6, tempSwing: 1.5, timeSwing: 3, roastSwing: 2, ratioSwing: 1.5 },
     tdsK: 1.0,
     filterBody: 0.85,
     crema: 0.8,
+    // Espresso strength is a ratio-driven style choice spanning ristretto 1:2
+    // (~10% TDS) to a long 1:3 (~5–7% TDS); both are well-made espresso. EY
+    // (18–22%) is the real quality gate, so the strength box runs the full 5–12%
+    // rather than only the classic 1:2 band. See ADR-0005.
     chart: {
       domain: { eyMin: 14, eyMax: 26, tdsMin: 5, tdsMax: 13 },
-      ideal: { eyMin: 18, eyMax: 22, tdsMin: 8, tdsMax: 12 },
+      ideal: { eyMin: 18, eyMax: 22, tdsMin: 5, tdsMax: 12 },
     },
   },
   aeropress: {
@@ -153,7 +176,10 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
       roast: { min: 0, max: 100, step: 1 },
     },
     doseGrams: 15,
-    ey: { baseEY: 20, grindSwing: 5, tempSwing: 3, timeSwing: 4, roastSwing: 2.5, ratioSwing: 1 },
+    // Hybrid immersion: like the press, contact time plateaus, and its hot-end
+    // recipes (Hoffmann ~95°C, long press) would otherwise overshoot. Gentle
+    // temp/time swings keep them in-box. See ADR-0005.
+    ey: { baseEY: 20, grindSwing: 5, tempSwing: 0.6, timeSwing: 1, roastSwing: 2, ratioSwing: 0.6 },
     tdsK: 1.0,
     filterBody: 0.25,
     crema: 0.05,
@@ -176,12 +202,19 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
       roast: { min: 0, max: 100, step: 1 },
     },
     doseGrams: 60,
-    // Cold + long: temperature is weak, time is the dominant lever.
-    ey: { baseEY: 20, grindSwing: 3.5, tempSwing: 1.5, timeSwing: 5, roastSwing: 2, ratioSwing: 1 },
+    // Cold + long: temperature is weak, time the dominant lever. Cold water
+    // extracts less efficiently, so it sits a touch under-centre (baseEY 19) —
+    // cold brew tends to run under-extracted relative to the hot-filter box.
+    ey: { baseEY: 19, grindSwing: 3.5, tempSwing: 1.5, timeSwing: 3, roastSwing: 2, ratioSwing: 1 },
     tdsK: 1.05,
     filterBody: 0.35,
     crema: 0,
-    chart: { domain: FILTER_DOMAIN, ideal: FILTER_IDEAL },
+    // A ready-to-drink batch at ~1:11 is stronger than drip, so cold brew gets
+    // its own strength box (not the filter band) and a taller TDS domain. See ADR-0005.
+    chart: {
+      domain: { eyMin: 14, eyMax: 26, tdsMin: 0.8, tdsMax: 2.6 },
+      ideal: { eyMin: 18, eyMax: 22, tdsMin: 1.3, tdsMax: 2.2 },
+    },
   },
   phin: {
     id: "phin",
@@ -200,14 +233,15 @@ export const METHOD_SPECS: Record<Method, MethodSpec> = {
       roast: { min: 0, max: 100, step: 1 },
     },
     doseGrams: 25,
-    ey: { baseEY: 20, grindSwing: 4.5, tempSwing: 2.5, timeSwing: 4, roastSwing: 2.5, ratioSwing: 1 },
+    ey: { baseEY: 20, grindSwing: 4.5, tempSwing: 1.5, timeSwing: 2.5, roastSwing: 2, ratioSwing: 1 },
     tdsK: 1.0,
     filterBody: 0.6,
     crema: 0,
-    // Phin runs strong; its box sits high on the TDS axis.
+    // Phin runs intensely strong (authentic 1:4–1:6 robusta, served over
+    // condensed milk); its box sits high on the TDS axis. See ADR-0005.
     chart: {
-      domain: { eyMin: 14, eyMax: 26, tdsMin: 1.2, tdsMax: 3.2 },
-      ideal: { eyMin: 18, eyMax: 22, tdsMin: 2.0, tdsMax: 2.8 },
+      domain: { eyMin: 14, eyMax: 26, tdsMin: 1.2, tdsMax: 4.0 },
+      ideal: { eyMin: 18, eyMax: 22, tdsMin: 2.0, tdsMax: 3.6 },
     },
   },
 };
