@@ -6,6 +6,11 @@
 // Every value is sourced, not invented. Where a brewer's real number falls
 // outside a method's simulator range it is clamped to the nearest in-range value
 // and the clamp is noted. Sources are cited per recipe.
+//
+// These recipes are the calibration targets for the Extraction Engine: each is
+// tuned to land INSIDE its method's ideal box (methods.ts → CALIBRATION CONTRACT,
+// ADR-0005). If you add/edit a recipe, re-run it through extractFrom() and confirm
+// it sits in the box — otherwise it will be falsely flagged over/under-extracted.
 import type { BrewVars, Method } from "./types";
 
 export interface FeaturedRecipe {
@@ -74,8 +79,10 @@ export const FEATURED_RECIPES: Record<Method, FeaturedRecipe[]> = {
       brewer: "Lance Hedrick",
       brewerBio: "Barista champion and educator known for accessible, high-clarity extraction recipes.",
       note: "Coarse, long 1:3 lever shot on ultra-light roast — juicy, high-clarity, and forgiving of bad gear.",
-      // time clamped 15→18s, temp clamped 99→96°C. beanbook.app/recipes/dc-lance-hedrick--soup-method-espresso
-      vars: { grind: 16, waterTemp: 96, ratio: 3, time: 18, roast: 12 },
+      // A deliberately LONG, low-pressure pull (~45s) that drives EY high for
+      // clarity; the long 1:3 makes it low-strength (~5–7% TDS) by design, not
+      // weak. temp clamped 99→96°C. beanbook.app/recipes/dc-lance-hedrick--soup-method-espresso
+      vars: { grind: 16, waterTemp: 96, ratio: 3, time: 45, roast: 12 },
     },
   ],
   aeropress: [
