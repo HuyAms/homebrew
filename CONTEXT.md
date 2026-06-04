@@ -67,7 +67,7 @@ The concentration of dissolved coffee in the beverage, as a %. The vertical axis
 The perceived intensity of the brew, driven by TDS. Distinct from Extraction — a brew can be strong but under-extracted, etc.
 
 **Taste Profile**:
-A live human-readable flavor readout on five axes (confirmed): **Sourness/acidity**, **Sweetness**, **Bitterness**, **Body**, **Balance** — derived from where the brew sits relative to the ideal extraction zone.
+A live human-readable flavor readout on five positive-attribute axes (confirmed): **Acidity**, **Sweetness**, **Bitterness**, **Body**, **Balance**. Most axes derive from where the brew sits relative to the ideal extraction zone. **Acidity** is a desirable cup attribute, _not_ the under-extraction sour defect (`[research/06]`: acidity falls as roast darkens; light = brighter): it is driven mostly by **roast level** (light = bright, dark = flat), then modulated by extraction — under-extraction reads sharper, over-extraction mutes it as bitterness masks it. It is therefore non-zero except at very dark roast, even for over-extracted brews.
 
 **Verdict**:
 Plain-language coaching tied to the numbers. Always leads with the **single highest-leverage fix** (change one variable at a time, per Rao/Hoffmann technique), e.g. "Tastes sour → grind one step finer." Alternatives ("…or +2°C, or +20s") are revealed on demand, not shown by default.
