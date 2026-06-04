@@ -290,23 +290,6 @@ export default function Playground() {
               </div>
             )}
 
-            {/* Pro view: SCA control chart (dot previews live, lands on Brew) */}
-            {proView && (
-              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
-                <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Pro · Control Chart</p>
-                <ControlChart
-                  result={result?.extraction ?? livePreview}
-                  domain={spec.chart.domain}
-                  idealBox={spec.chart.ideal}
-                  tdsDecimals={method === "espresso" ? 1 : 2}
-                  className="w-full"
-                />
-                <p className="mt-1 text-center text-[11px]" style={{ color: "#9A8870" }}>
-                  EY {(result?.extraction ?? livePreview).extractionYield}% · TDS {(result?.extraction ?? livePreview).tds}%
-                </p>
-              </div>
-            )}
-
             {/* Taste profile + verdict (brew-gated) */}
             <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
               <p className="mb-3 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Tasting Notes</p>
@@ -326,6 +309,23 @@ export default function Playground() {
                 </ul>
               )}
             </div>
+
+            {/* Pro view: SCA control chart (dot previews live, lands on Brew) */}
+            {proView && (
+              <div className="rounded-sm p-5" style={{ background: "#F8F1E2", border: "1px dashed #C9B795" }}>
+                <p className="mb-2 text-xs uppercase tracking-widest" style={{ color: "#A3917A" }}>Pro · Control Chart</p>
+                <ControlChart
+                  result={result?.extraction ?? livePreview}
+                  domain={spec.chart.domain}
+                  idealBox={spec.chart.ideal}
+                  tdsDecimals={method === "espresso" ? 1 : 2}
+                  className="w-full"
+                />
+                <p className="mt-1 text-center text-[11px]" style={{ color: "#9A8870" }}>
+                  EY {(result?.extraction ?? livePreview).extractionYield}% · TDS {(result?.extraction ?? livePreview).tds}%
+                </p>
+              </div>
+            )}
           </aside>
         </div>
       </div>
