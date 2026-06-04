@@ -64,13 +64,21 @@ export interface TasteResult {
 /** A single recommended adjustment from the Coach. */
 export interface Fix {
   variable: keyof BrewVars;
-  /** Direction/amount, e.g. "grind one step finer" or "+2°C". */
+  /** Direction/amount, e.g. "Grind finer" or "Water 2°C hotter". */
   instruction: string;
+  /** The concrete new value to set the variable to when the fix is applied. */
+  setValue: number;
 }
 
 export interface CoachResult {
+  /** Plain-language read of the cup, e.g. "Tastes sour — under-extracted". */
+  diagnosis: string;
+  /** The single highest-leverage change (one variable at a time). */
   primaryFix: Fix;
+  /** 2–3 alternative single-variable fixes, revealed on demand. */
   alternatives: Fix[];
+  /** True when the brew already sits in the ideal box (no change needed). */
+  dialedIn: boolean;
 }
 
 /** Reverse-mode taste complaint; maps 1:1 to control-chart directions. */

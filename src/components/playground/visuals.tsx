@@ -1,6 +1,7 @@
 // Theme-able visualizations for the Method and the five Variables. Each is
 // data-driven so it responds live as the user drags a slider.
 import type { BrewVars, Method } from "@/lib/coffee/types";
+import { grindReference } from "@/lib/coffee/grind";
 
 export interface VizTheme {
   bed: string; // tray/background fill
@@ -32,7 +33,9 @@ const GRID: [number, number][] = (() => {
 })();
 function GrindViz({ value, theme }: { value: number; theme: VizTheme }) {
   const t = value / 100; // 0 fine → 1 coarse
-  const r = 0.9 + t * 2.6;
+  // Granule size is the shared Grind Reference value (px), so the tray preview
+  // and the grind label/refs always agree.
+  const r = grindReference(value).granuleSizePx * 0.6;
   const keep = Math.round(GRID.length * (1 - t * 0.72));
   return (
     <svg viewBox="0 0 32 32" className="size-full">
