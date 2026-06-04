@@ -8,8 +8,10 @@
 // The result is brew-gated: inputs give live visual feedback (grounds, bean,
 // thermometer, the live chart dot), but the cup/taste/verdict update on Brew.
 // The Extraction Engine, Taste Mapper and Coach (src/lib/coffee/) drive both
-// Forward and Reverse modes. Brew state lives in the URL and survives refresh.
-import { useEffect, useState } from "react";
+// Forward and Reverse modes. Brew state lives in TanStack Router search params
+// (the single source of truth), so every brew is shareable and refresh-safe.
+import { useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
 import type {
   BrewVars,
   CoachResult,
@@ -23,19 +25,13 @@ import { mapTaste } from "@/lib/coffee/taste-mapper";
 import { coach, coachFromComplaint } from "@/lib/coffee/coach";
 import { grindReference } from "@/lib/coffee/grind";
 import { methodSpec } from "@/lib/coffee/methods";
-import {
-  METHODS,
-  VAR_META,
-  defaultVars,
-  varRanges,
-  fmtVar,
-  ratioGrams,
-  type TempUnit,
-} from "./config";
+import { defaultSearchVars, type BrewSearch, type Mode } from "@/lib/brew-search";
+import { METHODS, VAR_META, varRanges, fmtVar, ratioGrams } from "./config";
 import { VarViz, type VizTheme } from "./visuals";
 import { BrewStage, VarStrip } from "./brew-stage";
 import { ControlChart } from "./control-chart";
-import { readState, writeState, type Mode } from "./url-state";
+
+const route = getRouteApi("/");
 
 const serif = "'Georgia', 'Iowan Old Style', 'Times New Roman', serif";
 const theme: VizTheme = { bed: "#EFE6D2", mark: "#5A3A24", accent: "#A33A28", stroke: "#6F5D49" };
@@ -63,38 +59,41 @@ const COMPLAINTS: { id: TasteComplaint; label: string; note: string }[] = [
 ];
 
 export default function Playground() {
-  const init = readState();
-  const [method, setMethod] = useState<Method>(init.method);
-  const [vars, setVars] = useState<BrewVars>(init.vars);
-  const [mode, setMode] = useState<Mode>(init.mode);
-  const [proView, setProView] = useState(init.pro);
-  const [tempUnit, setTempUnit] = useState<TempUnit>(init.unit);
+  // Search params are the single source of truth for the persistent brew state.
+  const search = route.useSearch();
+  const navigate = route.useNavigate();
+  const { method, mode, pro: proView, unit: tempUnit, brewed } = search;
+  const vars: BrewVars = {
+    grind: search.grind,
+    waterTemp: search.waterTemp,
+    ratio: search.ratio,
+    time: search.time,
+    roast: search.roast,
+  };
 
+  // Transient, non-shareable UI state.
   const [brewing, setBrewing] = useState(false);
-  const [result, setResult] = useState<BrewResult | null>(init.brewed ? runBrew(init.method, init.vars) : null);
-
   const [showAlts, setShowAlts] = useState(false);
   const [complaint, setComplaint] = useState<TasteComplaint | null>(null);
 
   const spec = methodSpec(method);
   const ranges = varRanges(method);
-  const brewed = result !== null;
 
-  // Live (brew-gated for the cup, but live for the chart dot) extraction preview.
+  // The result is derived from the (brew-gated) search state, so it survives
+  // refresh; the chart preview reads live from the current variables.
+  const result: BrewResult | null = brewed ? runBrew(method, vars) : null;
   const livePreview = extractFrom(method, vars);
 
-  // Keep the URL in sync so the brew is shareable + refresh-safe.
-  useEffect(() => {
-    writeState({ method, vars, mode, pro: proView, unit: tempUnit, brewed });
-  }, [method, vars, mode, proView, tempUnit, brewed]);
+  // Merge a patch into the search params (replace: no back-stack spam).
+  const patch = (p: Partial<BrewSearch>) =>
+    navigate({ search: (prev) => ({ ...prev, ...p }), replace: true });
 
-  const setVar = (k: keyof BrewVars, v: number) => setVars((s) => ({ ...s, [k]: v }));
+  // Editing any Variable re-gates the result (cup reverts until the next Brew).
+  const setVar = (k: keyof BrewVars, v: number) => patch({ [k]: v, brewed: false } as Partial<BrewSearch>);
 
   const selectMethod = (m: Method) => {
-    setMethod(m);
-    setVars(defaultVars(m));
-    setResult(null);
     setComplaint(null);
+    patch({ method: m, ...defaultSearchVars(m), brewed: false });
   };
 
   const onBrew = () => {
@@ -102,21 +101,19 @@ export default function Playground() {
     setShowAlts(false);
     window.setTimeout(() => {
       setBrewing(false);
-      setResult(runBrew(method, vars));
+      patch({ brewed: true });
     }, BREW_MS);
   };
 
   const switchMode = (m: Mode) => {
-    setMode(m);
     setComplaint(null);
+    patch({ mode: m });
   };
 
   // Reverse mode: prescribe a fix from the chosen taste complaint.
   const reverseFix: CoachResult | null = complaint ? coachFromComplaint(complaint, method, vars) : null;
-  const applyFix = (variable: keyof BrewVars, value: number) => {
-    setVar(variable, value);
-    setResult(null);
-  };
+  const applyFix = (variable: keyof BrewVars, value: number) =>
+    patch({ [variable]: value, brewed: false } as Partial<BrewSearch>);
 
   return (
     <div
@@ -141,11 +138,11 @@ export default function Playground() {
               value={mode}
               onChange={(v) => switchMode(v as Mode)}
             />
-            <Toggle label="Pro view" on={proView} onClick={() => setProView((p) => !p)} />
+            <Toggle label="Pro view" on={proView} onClick={() => patch({ pro: !proView })} />
             <Segmented
               options={[{ v: "C", l: "°C" }, { v: "F", l: "°F" }]}
               value={tempUnit}
-              onChange={(v) => setTempUnit(v as TempUnit)}
+              onChange={(v) => patch({ unit: v as "C" | "F" })}
             />
           </div>
         </header>
